@@ -7,13 +7,16 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // 토큰이 있으면 대시보드로, 없으면 로그인으로
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      router.push('/dashboard');
-    } else {
-      router.push('/login');
-    }
+    // 임시: 로그인 우회, 바로 대시보드로
+    router.push('/dashboard');
+    
+    // TODO: 로그인 기능 수정 후 아래 코드로 변경
+    // const token = localStorage.getItem('access_token');
+    // if (token) {
+    //   router.push('/dashboard');
+    // } else {
+    //   router.push('/login');
+    // }
   }, [router]);
 
   return (

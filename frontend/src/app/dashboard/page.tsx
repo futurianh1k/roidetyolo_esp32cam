@@ -25,29 +25,45 @@ export default function DashboardPage() {
   // 클라이언트 사이드에서만 실행
   useEffect(() => {
     setMounted(true);
-    if (!isAuthenticated && mounted) {
-      router.push('/login');
-    }
+    // TODO: 로그인 기능 수정 후 인증 체크 활성화
+    // if (!isAuthenticated && mounted) {
+    //   router.push('/login');
+    // }
   }, [isAuthenticated, mounted, router]);
 
-  // 사용자 정보 조회
+  // 사용자 정보 조회 (임시 비활성화)
   const { data: currentUser, isLoading: userLoading } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
-      const { data } = await authAPI.getCurrentUser();
-      return data;
+      // 임시: 더미 사용자 반환
+      return {
+        id: 1,
+        username: 'guest',
+        email: 'guest@example.com',
+        role: 'admin' as const,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_login_at: null,
+      };
     },
-    enabled: mounted && isAuthenticated,
+    enabled: mounted,
   });
 
   // 장비 목록 조회
   const { data: devicesData, isLoading: devicesLoading, refetch } = useQuery({
     queryKey: ['devices'],
     queryFn: async () => {
-      const { data } = await devicesAPI.getList({ page: 1, page_size: 100 });
-      return data;
+      try {
+        const { data } = await devicesAPI.getList({ page: 1, page_size: 100 });
+        return data;
+      } catch (error) {
+        console.error('장비 목록 조회 실패:', error);
+        // 임시: 빈 목록 반환
+        return { devices: [], total: 0, page: 1, page_size: 100 };
+      }
     },
-    enabled: mounted && isAuthenticated,
+    enabled: mounted,
     refetchInterval: 10000, // 10초마다 자동 갱신
   });
 

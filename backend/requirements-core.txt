@@ -1,13 +1,13 @@
-# FastAPI Core
+# FastAPI Core (필수 패키지만)
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 
 # Database
-sqlalchemy==2.0.36
-pymysql==1.1.1
-alembic==1.14.0
-cryptography==44.0.0
+sqlalchemy==2.0.23
+pymysql==1.1.0
+alembic==1.13.0
+cryptography==41.0.7
 
 # Security & Authentication
 python-jose[cryptography]==3.3.0
@@ -15,19 +15,14 @@ passlib[bcrypt]==1.7.4
 python-dotenv==1.0.0
 
 # Data Validation
-pydantic==2.10.4
-pydantic-settings==2.7.0
-email-validator==2.2.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+email-validator==2.1.0
 
 # Communication
 paho-mqtt==1.6.1
 python-socketio==5.10.0
 aiofiles==23.2.1
-
-# RTSP & Media
-opencv-python==4.8.1.78
-aiortsp==1.4.0
-pydub==0.25.1
 
 # Testing
 pytest==7.4.3

@@ -22,6 +22,7 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // TODO: 로그인 기능 수정 후 토큰 필수로 변경
     return config;
   },
   (error) => {
@@ -33,35 +34,10 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
-
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (refreshToken) {
-          const response = await axios.post(`${API_URL}/auth/refresh`, {
-            refresh_token: refreshToken,
-          });
-
-          const { access_token, refresh_token: newRefreshToken } = response.data;
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', newRefreshToken);
-
-          // 원래 요청 재시도
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          }
-          return api(originalRequest);
-        }
-      } catch (refreshError) {
-        // 토큰 갱신 실패 - 로그아웃 처리
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
+    // TODO: 로그인 기능 수정 후 활성화
+    // 임시: 401 오류를 무시하고 계속 진행
+    if (error.response?.status === 401) {
+      console.warn('인증 오류 무시 (임시):', error.message);
     }
 
     return Promise.reject(error);

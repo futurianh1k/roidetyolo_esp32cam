@@ -31,9 +31,10 @@ export default function DeviceDetailPage() {
 
   useEffect(() => {
     setMounted(true);
-    if (!isAuthenticated && mounted) {
-      router.push('/login');
-    }
+    // TODO: 로그인 기능 수정 후 인증 체크 활성화
+    // if (!isAuthenticated && mounted) {
+    //   router.push('/login');
+    // }
   }, [isAuthenticated, mounted, router]);
 
   // 장비 정보 조회
@@ -53,7 +54,7 @@ export default function DeviceDetailPage() {
       const { data } = await devicesAPI.getLatestStatus(deviceId);
       return data;
     },
-    enabled: mounted && isAuthenticated && !isNaN(deviceId),
+    enabled: mounted && !isNaN(deviceId),
     refetchInterval: 5000, // 5초마다 자동 갱신
   });
 

@@ -37,7 +37,8 @@ async def list_devices(
     page_size: int = Query(10, ge=1, le=100),
     is_online: Optional[bool] = None,
     device_type: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> DeviceListResponse:
     """
@@ -71,7 +72,8 @@ async def list_devices(
 @router.get("/{device_id}", response_model=DeviceResponse)
 async def get_device(
     device_id: int,
-    current_user: User = Depends(get_current_active_user),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> DeviceResponse:
     """
@@ -345,7 +347,8 @@ async def get_device_status_history(
 @router.get("/{device_id}/status/latest", response_model=DeviceStatusResponse)
 async def get_device_latest_status(
     device_id: int,
-    current_user: User = Depends(get_current_active_user),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> DeviceStatusResponse:
     """

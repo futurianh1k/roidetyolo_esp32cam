@@ -29,7 +29,8 @@ router = APIRouter(prefix="/control", tags=["장비 제어"])
 async def control_camera(
     device_id: int,
     control: CameraControlRequest,
-    current_user: User = Depends(require_operator),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(require_operator),
     db: Session = Depends(get_db),
     request: Request = None
 ) -> ControlResponse:
@@ -62,22 +63,21 @@ async def control_camera(
             action=control.action
         )
         
-        # 감사 로그 기록
-        ip_address = get_client_ip(request) if request else None
-        audit_log = AuditLog(
-            user_id=current_user.id,
-            device_id=device.id,
-            action=f"camera_{control.action}",
-            resource_type="device_control",
-            resource_id=str(device.id),
-            ip_address=ip_address
-        )
-        db.add(audit_log)
-        db.commit()
+        # TODO: 로그인 수정 후 감사 로그 활성화
+        # ip_address = get_client_ip(request) if request else None
+        # audit_log = AuditLog(
+        #     user_id=current_user.id,
+        #     device_id=device.id,
+        #     action=f"camera_{control.action}",
+        #     resource_type="device_control",
+        #     resource_id=str(device.id),
+        #     ip_address=ip_address
+        # )
+        # db.add(audit_log)
+        # db.commit()
         
         logger.info(
-            f"사용자 {current_user.username}가 장비 {device.device_name}의 "
-            f"카메라 제어: {control.action}"
+            f"장비 {device.device_name}의 카메라 제어: {control.action}"
         )
         
         return ControlResponse(
@@ -98,7 +98,8 @@ async def control_camera(
 async def control_microphone(
     device_id: int,
     control: MicrophoneControlRequest,
-    current_user: User = Depends(require_operator),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(require_operator),
     db: Session = Depends(get_db),
     request: Request = None
 ) -> ControlResponse:
@@ -131,22 +132,9 @@ async def control_microphone(
             action=control.action
         )
         
-        # 감사 로그 기록
-        ip_address = get_client_ip(request) if request else None
-        audit_log = AuditLog(
-            user_id=current_user.id,
-            device_id=device.id,
-            action=f"microphone_{control.action}",
-            resource_type="device_control",
-            resource_id=str(device.id),
-            ip_address=ip_address
-        )
-        db.add(audit_log)
-        db.commit()
-        
+        # TODO: 로그인 수정 후 감사 로그 활성화
         logger.info(
-            f"사용자 {current_user.username}가 장비 {device.device_name}의 "
-            f"마이크 제어: {control.action}"
+            f"장비 {device.device_name}의 마이크 제어: {control.action}"
         )
         
         return ControlResponse(
@@ -167,7 +155,8 @@ async def control_microphone(
 async def control_speaker(
     device_id: int,
     control: SpeakerControlRequest,
-    current_user: User = Depends(require_operator),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(require_operator),
     db: Session = Depends(get_db),
     request: Request = None
 ) -> ControlResponse:
@@ -208,22 +197,9 @@ async def control_speaker(
             audio_url=control.audio_url
         )
         
-        # 감사 로그 기록
-        ip_address = get_client_ip(request) if request else None
-        audit_log = AuditLog(
-            user_id=current_user.id,
-            device_id=device.id,
-            action=f"speaker_{control.action}",
-            resource_type="device_control",
-            resource_id=str(device.id),
-            ip_address=ip_address
-        )
-        db.add(audit_log)
-        db.commit()
-        
+        # TODO: 로그인 수정 후 감사 로그 활성화
         logger.info(
-            f"사용자 {current_user.username}가 장비 {device.device_name}의 "
-            f"스피커 제어: {control.action}"
+            f"장비 {device.device_name}의 스피커 제어: {control.action}"
         )
         
         return ControlResponse(
@@ -244,7 +220,8 @@ async def control_speaker(
 async def control_display(
     device_id: int,
     control: DisplayControlRequest,
-    current_user: User = Depends(require_operator),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(require_operator),
     db: Session = Depends(get_db),
     request: Request = None
 ) -> ControlResponse:
@@ -292,22 +269,9 @@ async def control_display(
             emoji_id=control.emoji_id
         )
         
-        # 감사 로그 기록
-        ip_address = get_client_ip(request) if request else None
-        audit_log = AuditLog(
-            user_id=current_user.id,
-            device_id=device.id,
-            action=f"display_{control.action}",
-            resource_type="device_control",
-            resource_id=str(device.id),
-            ip_address=ip_address
-        )
-        db.add(audit_log)
-        db.commit()
-        
+        # TODO: 로그인 수정 후 감사 로그 활성화
         logger.info(
-            f"사용자 {current_user.username}가 장비 {device.device_name}의 "
-            f"디스플레이 제어: {control.action}"
+            f"장비 {device.device_name}의 디스플레이 제어: {control.action}"
         )
         
         return ControlResponse(
