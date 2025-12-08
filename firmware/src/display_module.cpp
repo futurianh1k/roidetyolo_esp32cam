@@ -6,6 +6,7 @@
 
 #include <M5Unified.h>
 #include <M5GFX.h>
+#include <WiFi.h>
 #include "display_module.h"
 #include "config.h"
 

@@ -255,7 +255,7 @@ void reconnectWiFi() {
 void setupMQTT() {
     mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
     mqttClient.setCallback(mqttCallback);
-    mqttClient.setKeepAlive(MQTT_KEEPALIVE);
+    mqttClient.setKeepAlive(MQTT_KEEPALIVE_SEC);
     
     reconnectMQTT();
 }

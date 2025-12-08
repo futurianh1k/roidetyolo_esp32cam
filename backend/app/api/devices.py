@@ -95,7 +95,8 @@ async def get_device(
 @router.post("/", response_model=DeviceResponse, status_code=status.HTTP_201_CREATED)
 async def register_device(
     device_data: DeviceCreate,
-    current_user: User = Depends(require_operator),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(require_operator),
     db: Session = Depends(get_db),
     request: Request = None
 ) -> DeviceResponse:
@@ -140,20 +141,20 @@ async def register_device(
     db.commit()
     db.refresh(new_device)
     
-    # 감사 로그 기록
-    ip_address = get_client_ip(request) if request else None
-    audit_log = AuditLog(
-        user_id=current_user.id,
-        device_id=new_device.id,
-        action="register_device",
-        resource_type="device",
-        resource_id=str(new_device.id),
-        ip_address=ip_address
-    )
-    db.add(audit_log)
-    db.commit()
+    # TODO: 로그인 수정 후 감사 로그 활성화
+    # ip_address = get_client_ip(request) if request else None
+    # audit_log = AuditLog(
+    #     user_id=current_user.id,
+    #     device_id=new_device.id,
+    #     action="register_device",
+    #     resource_type="device",
+    #     resource_id=str(new_device.id),
+    #     ip_address=ip_address
+    # )
+    # db.add(audit_log)
+    # db.commit()
     
-    logger.info(f"사용자 {current_user.username}가 장비 {new_device.device_name} 등록")
+    logger.info(f"장비 {new_device.device_name} 등록")
     
     return new_device
 
@@ -269,7 +270,8 @@ async def delete_device(
 async def create_device_status(
     device_id: int,
     status_data: DeviceStatusCreate,
-    current_user: User = Depends(get_current_active_user),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> DeviceStatusResponse:
     """

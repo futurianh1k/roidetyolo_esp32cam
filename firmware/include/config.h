@@ -10,20 +10,20 @@
 // ============================================================================
 // WiFi 설정
 // ============================================================================
-#define WIFI_SSID "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+#define WIFI_SSID "LUKUS"
+#define WIFI_PASSWORD "important1@"
 #define WIFI_CONNECT_TIMEOUT 30000  // 30초
 #define WIFI_RETRY_INTERVAL 5000    // 5초
 
 // ============================================================================
 // MQTT 설정
 // ============================================================================
-#define MQTT_BROKER "192.168.1.100"  // 백엔드 서버 IP
+#define MQTT_BROKER "10.10.11.18"  // 백엔드 서버 IP
 #define MQTT_PORT 1883
 #define MQTT_USERNAME ""
 #define MQTT_PASSWORD ""
 #define MQTT_CLIENT_ID_PREFIX "cores3_"
-#define MQTT_KEEPALIVE 60
+#define MQTT_KEEPALIVE_SEC 60  // PubSubClient의 MQTT_KEEPALIVE와 충돌 방지
 #define MQTT_QOS 1
 
 // ============================================================================
