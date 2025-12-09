@@ -12,6 +12,7 @@ from app.schemas.control import (
     MicrophoneControlRequest,
     SpeakerControlRequest,
     DisplayControlRequest,
+    SystemControlRequest,
     ControlResponse,
 )
 from app.dependencies import (
@@ -180,21 +181,29 @@ async def control_speaker(
             detail="장비가 오프라인 상태입니다"
         )
     
-    # play 액션 시 audio_url 필수
-    if control.action == "play" and not control.audio_url:
+    # play 액션 시 audio_file 또는 audio_url 필수
+    if control.action == "play" and not control.audio_file and not control.audio_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="play 액션은 audio_url이 필요합니다"
+            detail="play 액션은 audio_file 또는 audio_url이 필요합니다"
         )
     
     try:
+        # 오디오 파일명이 주어진 경우 URL로 변환
+        audio_url = control.audio_url
+        if control.audio_file and not audio_url:
+            from app.services import get_audio_service
+            audio_service = get_audio_service()
+            audio_url = audio_service.get_audio_url(control.audio_file)
+        
         # MQTT 명령 전송
         mqtt = get_mqtt_service()
         request_id = mqtt.send_control_command(
             device_id=device.device_id,
             command="speaker",
             action=control.action,
-            audio_url=control.audio_url
+            audio_url=audio_url,
+            volume=control.volume
         )
         
         # TODO: 로그인 수정 후 감사 로그 활성화
@@ -285,5 +294,62 @@ async def control_display(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="디스플레이 제어 명령 전송에 실패했습니다"
+        )
+
+
+@router.post("/devices/{device_id}/system", response_model=ControlResponse)
+async def control_system(
+    device_id: int,
+    control: SystemControlRequest,
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(require_operator),
+    db: Session = Depends(get_db),
+    request: Request = None
+) -> ControlResponse:
+    """
+    시스템 제어
+    
+    권한: OPERATOR 이상
+    액션: restart (장비 재시작)
+    """
+    # 장비 확인
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="장비를 찾을 수 없습니다"
+        )
+    
+    if not device.is_online:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="장비가 오프라인 상태입니다"
+        )
+    
+    try:
+        # MQTT 명령 전송
+        mqtt = get_mqtt_service()
+        request_id = mqtt.send_control_command(
+            device_id=device.device_id,
+            command="system",
+            action=control.action
+        )
+        
+        # TODO: 로그인 수정 후 감사 로그 활성화
+        logger.info(
+            f"장비 {device.device_name}의 시스템 제어: {control.action}"
+        )
+        
+        return ControlResponse(
+            success=True,
+            message=f"시스템 {control.action} 명령을 전송했습니다",
+            request_id=request_id
+        )
+    
+    except Exception as e:
+        logger.error(f"시스템 제어 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="시스템 제어 명령 전송에 실패했습니다"
         )
 

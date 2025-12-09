@@ -1,11 +1,11 @@
 'use client';
 
 import { Device, DeviceStatus as Status } from '@/lib/api';
-import { Battery, Cpu, HardDrive, Thermometer, Camera, Mic } from 'lucide-react';
+import { Battery, Cpu, HardDrive, Thermometer, Camera, Mic, Monitor } from 'lucide-react';
 
 interface DeviceStatusProps {
   device: Device;
-  status: Status | undefined;
+  status: Status | null | undefined;
   isLoading: boolean;
 }
 
@@ -24,6 +24,53 @@ export default function DeviceStatus({ device, status, isLoading }: DeviceStatus
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 상태 정보가 없을 때 (장비가 아직 연결되지 않음)
+  if (!status) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">장비 상태</h2>
+          <div className="text-center py-8">
+            <Monitor className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+            <p className="text-gray-600">장비가 아직 연결되지 않았습니다</p>
+            <p className="text-sm text-gray-500 mt-2">
+              장비가 MQTT 브로커에 연결되면 상태가 표시됩니다
+            </p>
+          </div>
+        </div>
+
+        {/* Component Status - 연결 안됨 상태 */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">컴포넌트 상태</h2>
+          <div className="space-y-3">
+            {[
+              { icon: Camera, label: '카메라' },
+              { icon: Mic, label: '마이크' },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                >
+                  <div className="flex items-center">
+                    <Icon className="h-5 w-5 text-gray-400 mr-3" />
+                    <span className="text-sm font-medium text-gray-600">
+                      {item.label}
+                    </span>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                    대기 중
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );

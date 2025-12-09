@@ -57,6 +57,34 @@ float getCPUTemperature() {
 }
 
 /**
+ * CPU 사용률 계산
+ */
+uint8_t getCPUUsage() {
+    // ESP32의 CPU 사용률을 대략적으로 계산
+    // 실제로는 idle task의 실행 시간을 측정해야 하지만
+    // 간단하게 메모리 사용량과 작업 수로 추정
+    
+    uint32_t freeHeap = getFreeHeap();
+    uint32_t totalHeap = getTotalHeap();
+    uint32_t usedHeap = totalHeap - freeHeap;
+    
+    // 메모리 사용률을 CPU 사용률의 근사치로 사용 (0-100%)
+    uint8_t cpuUsage = (usedHeap * 100) / totalHeap;
+    
+    // 추가 작업 부하 고려
+    extern bool cameraActive;
+    extern bool microphoneActive;
+    
+    if (cameraActive) cpuUsage += 15;  // 카메라 작동 시 +15%
+    if (microphoneActive) cpuUsage += 10;  // 마이크 작동 시 +10%
+    
+    // 100% 이상 방지
+    if (cpuUsage > 100) cpuUsage = 100;
+    
+    return cpuUsage;
+}
+
+/**
  * 시스템 상태 가져오기
  */
 SystemStatus getSystemStatus() {
@@ -66,7 +94,7 @@ SystemStatus getSystemStatus() {
     status.memoryUsage = getTotalHeap() - getFreeHeap();
     status.storageUsage = 0;  // TODO: SD 카드 사용량
     status.temperature = getCPUTemperature();
-    status.cpuUsage = 0;  // TODO: CPU 사용률 계산
+    status.cpuUsage = getCPUUsage();
     
     // 카메라 상태
     if (cameraActive) {

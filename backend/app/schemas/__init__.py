@@ -32,6 +32,15 @@ from app.schemas.control import (
     DisplayControlRequest,
     ControlResponse,
 )
+from app.schemas.asr import (
+    ASRSessionStartRequest,
+    ASRSessionStartResponse,
+    ASRSessionStopRequest,
+    ASRSessionStopResponse,
+    ASRSessionStatus,
+    ASRSessionStatusResponse,
+    RecognitionResult,
+)
 
 __all__ = [
     # User schemas
@@ -61,4 +70,12 @@ __all__ = [
     "SpeakerControlRequest",
     "DisplayControlRequest",
     "ControlResponse",
+    # ASR schemas
+    "ASRSessionStartRequest",
+    "ASRSessionStartResponse",
+    "ASRSessionStopRequest",
+    "ASRSessionStopResponse",
+    "ASRSessionStatus",
+    "ASRSessionStatusResponse",
+    "RecognitionResult",
 ]

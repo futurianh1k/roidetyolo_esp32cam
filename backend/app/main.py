@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.database import init_db
-from app.api import auth, users, devices, control, audio, websocket
+from app.api import auth, users, devices, control, audio, websocket, asr
 from app.services import mqtt_service
 from app.utils.logger import logger
 
@@ -30,6 +30,15 @@ async def lifespan(app: FastAPI):
     # MQTT 서비스 연결
     try:
         mqtt_service.connect()
+        
+        # MQTT 메시지 핸들러 등록
+        from app.services.mqtt_handlers import (
+            handle_device_status,
+            handle_device_response
+        )
+        mqtt_service.register_handler("devices/+/status", handle_device_status)
+        mqtt_service.register_handler("devices/+/response", handle_device_response)
+        
         logger.info("MQTT 브로커 연결 완료")
     except Exception as e:
         logger.error(f"MQTT 브로커 연결 실패: {e}")
@@ -71,6 +80,7 @@ app.include_router(devices.router)
 app.include_router(control.router)
 app.include_router(audio.router)
 app.include_router(websocket.router)
+app.include_router(asr.router)  # ASR (음성인식) API
 
 
 @app.get("/")

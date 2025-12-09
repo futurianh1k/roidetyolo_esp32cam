@@ -40,6 +40,7 @@
 #define TOPIC_CONTROL_MICROPHONE "devices/" DEVICE_ID "/control/microphone"
 #define TOPIC_CONTROL_SPEAKER "devices/" DEVICE_ID "/control/speaker"
 #define TOPIC_CONTROL_DISPLAY "devices/" DEVICE_ID "/control/display"
+#define TOPIC_CONTROL_SYSTEM "devices/" DEVICE_ID "/control/system"
 #define TOPIC_STATUS "devices/" DEVICE_ID "/status"
 #define TOPIC_RESPONSE "devices/" DEVICE_ID "/response"
 

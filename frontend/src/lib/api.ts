@@ -109,12 +109,28 @@ export const authAPI = {
     api.get<User>('/auth/me'),
 };
 
+export interface DeviceCreateRequest {
+  device_id: string;
+  device_name: string;
+  device_type: string;
+  ip_address?: string;
+  mqtt_topic?: string;
+  location?: string;
+  description?: string;
+}
+
 export const devicesAPI = {
   getList: (params?: { page?: number; page_size?: number; is_online?: boolean }) =>
     api.get<{ devices: Device[]; total: number; page: number; page_size: number }>('/devices/', { params }),
   
   getById: (id: number) =>
     api.get<Device>(`/devices/${id}`),
+  
+  create: (data: DeviceCreateRequest) =>
+    api.post<Device>('/devices/', data),
+  
+  delete: (id: number) =>
+    api.delete(`/devices/${id}`),
   
   getLatestStatus: (id: number) =>
     api.get<DeviceStatus>(`/devices/${id}/status/latest`),
@@ -125,17 +141,124 @@ export const devicesAPI = {
     }),
 };
 
+export interface AudioFile {
+  filename: string;
+  size: number;
+  uploaded_at: string;
+  uploaded_by: string;
+}
+
+export const audioAPI = {
+  list: () =>
+    api.get<{ files: AudioFile[] }>('/audio/list'),
+  
+  upload: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<{ filename: string; message: string }>('/audio/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  
+  delete: (filename: string) =>
+    api.delete(`/audio/${filename}`),
+  
+  getUrl: (filename: string) =>
+    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/audio/${filename}`,
+};
+
 export const controlAPI = {
   camera: (deviceId: number, action: 'start' | 'pause' | 'stop') =>
     api.post(`/control/devices/${deviceId}/camera`, { action }),
   
-  microphone: (deviceId: number, action: 'start' | 'pause' | 'stop') =>
+  microphone: (deviceId: number, action: 'start' | 'pause' | 'stop' | 'start_asr' | 'stop_asr') =>
     api.post(`/control/devices/${deviceId}/microphone`, { action }),
   
-  speaker: (deviceId: number, action: 'play' | 'stop', audioUrl?: string) =>
-    api.post(`/control/devices/${deviceId}/speaker`, { action, audio_url: audioUrl }),
+  speaker: (deviceId: number, action: 'play' | 'stop', audioFile?: string, volume?: number) =>
+    api.post(`/control/devices/${deviceId}/speaker`, { 
+      action, 
+      audio_file: audioFile,
+      volume: volume 
+    }),
   
   display: (deviceId: number, action: 'show_text' | 'show_emoji' | 'clear', content?: string, emojiId?: string) =>
     api.post(`/control/devices/${deviceId}/display`, { action, content, emoji_id: emojiId }),
+  
+  system: (deviceId: number, action: 'restart') =>
+    api.post(`/control/devices/${deviceId}/system`, { action }),
+};
+
+// ASR (음성인식) 타입 정의
+export interface ASRSessionStartRequest {
+  language?: string;
+  vad_enabled?: boolean;
+}
+
+export interface ASRSessionStartResponse {
+  session_id: string;
+  device_id: number;
+  device_name: string;
+  ws_url: string;
+  status: string;
+  message: string;
+}
+
+export interface ASRSessionStopRequest {
+  session_id: string;
+}
+
+export interface ASRSessionStopResponse {
+  session_id: string;
+  device_id: number;
+  status: string;
+  segments_count: number;
+}
+
+export interface ASRSessionStatus {
+  session_id: string;
+  is_active: boolean;
+  is_processing: boolean;
+  segments_count: number;
+  last_result: string | null;
+  created_at: string;
+}
+
+export interface ASRSessionStatusResponse {
+  device_id: number;
+  device_name: string;
+  has_active_session: boolean;
+  session: ASRSessionStatus | null;
+}
+
+export interface RecognitionResult {
+  type: string;
+  device_id: number;
+  device_name: string;
+  session_id: string;
+  text: string;
+  timestamp: string;
+  duration: number;
+  is_emergency: boolean;
+  emergency_keywords: string[];
+}
+
+// ASR API 함수들
+export const asrAPI = {
+  startSession: (deviceId: number, request: ASRSessionStartRequest) =>
+    api.post<ASRSessionStartResponse>(`/asr/devices/${deviceId}/session/start`, request),
+  
+  stopSession: (deviceId: number, request: ASRSessionStopRequest) =>
+    api.post<ASRSessionStopResponse>(`/asr/devices/${deviceId}/session/stop`, request),
+  
+  getSessionStatus: (deviceId: number) =>
+    api.get<ASRSessionStatusResponse>(`/asr/devices/${deviceId}/session/status`),
+  
+  listAllSessions: () =>
+    api.get<{ total: number; local_sessions: Record<number, string>; asr_server_sessions: any }>('/asr/sessions'),
+  
+  healthCheck: () =>
+    api.get<{ status: string; asr_server?: any; error?: string }>('/asr/health'),
 };
 
