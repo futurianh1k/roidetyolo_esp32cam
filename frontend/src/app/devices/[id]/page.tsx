@@ -62,8 +62,8 @@ export default function DeviceDetailPage() {
     queryKey: ['deviceStatus', deviceId],
     queryFn: async () => {
       try {
-        const { data } = await devicesAPI.getLatestStatus(deviceId);
-        return data;
+      const { data } = await devicesAPI.getLatestStatus(deviceId);
+      return data;
       } catch (error: any) {
         // 상태 정보가 없을 경우 에러 무시 (장비가 아직 연결 안됨)
         if (error.response?.status === 404) {

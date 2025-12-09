@@ -11,7 +11,10 @@
 void mqttCallback(char *topic, byte *payload, unsigned int length);
 
 // 제어 명령 처리
-void handleCameraControl(const char *action, const char *requestId);
+void handleCameraControl(const char *action, const char *requestId,
+                         const char *sinkUrl = nullptr,
+                         const char *streamMode = nullptr,
+                         int frameInterval = 1000);
 void handleMicrophoneControl(const char *action, const char *requestId,
                              const char *sessionId = nullptr,
                              const char *wsUrl = nullptr);

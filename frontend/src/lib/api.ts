@@ -170,8 +170,19 @@ export const audioAPI = {
 };
 
 export const controlAPI = {
-  camera: (deviceId: number, action: 'start' | 'pause' | 'stop') =>
-    api.post(`/control/devices/${deviceId}/camera`, { action }),
+  camera: (
+    deviceId: number,
+    action: 'start' | 'pause' | 'stop',
+    sinkUrl?: string,
+    streamMode?: 'mjpeg_stills' | 'realtime_websocket' | 'realtime_rtsp',
+    frameInterval?: number
+  ) =>
+    api.post(`/control/devices/${deviceId}/camera`, {
+      action,
+      sink_url: sinkUrl,
+      stream_mode: streamMode,
+      frame_interval: frameInterval,
+    }),
   
   microphone: (deviceId: number, action: 'start' | 'pause' | 'stop' | 'start_asr' | 'stop_asr') =>
     api.post(`/control/devices/${deviceId}/microphone`, { action }),

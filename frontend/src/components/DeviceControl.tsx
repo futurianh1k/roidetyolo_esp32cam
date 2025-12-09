@@ -17,6 +17,11 @@ export default function DeviceControl({ device }: DeviceControlProps) {
   const [selectedAudioFile, setSelectedAudioFile] = useState<string>('');
   const [volume, setVolume] = useState<number>(70);
   const [isUploading, setIsUploading] = useState(false);
+  
+  // 영상 sink 설정
+  const [sinkUrl, setSinkUrl] = useState<string>('');
+  const [streamMode, setStreamMode] = useState<'mjpeg_stills' | 'realtime_websocket' | 'realtime_rtsp' | ''>('');
+  const [frameInterval, setFrameInterval] = useState<number>(1000);
 
   // 오디오 파일 목록 조회
   useEffect(() => {
@@ -96,12 +101,32 @@ export default function DeviceControl({ device }: DeviceControlProps) {
       return;
     }
 
+    // start 액션 시 sink 설정 검증
+    if (action === 'start') {
+      if (sinkUrl && !streamMode) {
+        toast.error('전송 방식을 선택하세요');
+        return;
+      }
+      if (streamMode === 'mjpeg_stills' && (!frameInterval || frameInterval < 100 || frameInterval > 10000)) {
+        toast.error('프레임 간격은 100ms ~ 10000ms 사이여야 합니다');
+        return;
+      }
+    }
+
     setIsLoading(`camera-${action}`);
     try {
-      await controlAPI.camera(device.id, action);
+      // sink 정보가 있으면 포함하여 전송
+      await controlAPI.camera(
+        device.id,
+        action,
+        sinkUrl || undefined,
+        streamMode || undefined,
+        streamMode === 'mjpeg_stills' ? frameInterval : undefined
+      );
       toast.success(`카메라 ${action === 'start' ? '시작' : action === 'pause' ? '일시정지' : '정지'} 명령 전송`);
-    } catch (error) {
-      toast.error('카메라 제어 실패');
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || '카메라 제어 실패';
+      toast.error(errorMessage);
     } finally {
       setIsLoading(null);
     }
@@ -213,6 +238,112 @@ export default function DeviceControl({ device }: DeviceControlProps) {
           <Camera className="h-5 w-5 text-gray-600 mr-2" />
           <h2 className="text-lg font-semibold text-gray-900">카메라 제어</h2>
         </div>
+        
+        {/* 영상 Sink 설정 */}
+        <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">영상 Sink 설정 (선택사항)</h3>
+          
+          {/* Sink URL 입력 */}
+          <div className="space-y-2 mb-3">
+            <label className="block text-xs font-medium text-gray-600">Sink URL</label>
+            <input
+              type="text"
+              value={sinkUrl}
+              onChange={(e) => setSinkUrl(e.target.value)}
+              placeholder="http://192.168.1.100:8080/video 또는 ws://192.168.1.100:8080/stream"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              disabled={!device.is_online}
+            />
+            <p className="text-xs text-gray-500">
+              HTTP/WebSocket/RTSP URL 형식 지원
+            </p>
+          </div>
+
+          {/* 전송 방식 선택 */}
+          {sinkUrl && (
+            <div className="space-y-2 mb-3">
+              <label className="block text-xs font-medium text-gray-600">전송 방식</label>
+              <div className="space-y-2">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="streamMode"
+                    value="mjpeg_stills"
+                    checked={streamMode === 'mjpeg_stills'}
+                    onChange={(e) => setStreamMode(e.target.value as typeof streamMode)}
+                    className="mr-2"
+                    disabled={!device.is_online}
+                  />
+                  <span className="text-sm text-gray-700">MJPEG 스틸컷 (주기적 JPEG 전송)</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="streamMode"
+                    value="realtime_websocket"
+                    checked={streamMode === 'realtime_websocket'}
+                    onChange={(e) => setStreamMode(e.target.value as typeof streamMode)}
+                    className="mr-2"
+                    disabled={!device.is_online}
+                  />
+                  <span className="text-sm text-gray-700">실시간 스트림 (WebSocket)</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="streamMode"
+                    value="realtime_rtsp"
+                    checked={streamMode === 'realtime_rtsp'}
+                    onChange={(e) => setStreamMode(e.target.value as typeof streamMode)}
+                    className="mr-2"
+                    disabled={!device.is_online}
+                  />
+                  <span className="text-sm text-gray-700">실시간 스트림 (RTSP)</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* 프레임 간격 입력 (스틸컷일 경우만) */}
+          {sinkUrl && streamMode === 'mjpeg_stills' && (
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-gray-600">
+                프레임 간격: {frameInterval}ms
+              </label>
+              <input
+                type="range"
+                min="100"
+                max="10000"
+                step="100"
+                value={frameInterval}
+                onChange={(e) => setFrameInterval(Number(e.target.value))}
+                className="w-full"
+                disabled={!device.is_online}
+              />
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>100ms</span>
+                <span>10초</span>
+              </div>
+            </div>
+          )}
+
+          {/* Sink 설정 초기화 버튼 */}
+          {sinkUrl && (
+            <button
+              onClick={() => {
+                setSinkUrl('');
+                setStreamMode('');
+                setFrameInterval(1000);
+              }}
+              className="mt-2 text-xs text-gray-600 hover:text-gray-900 underline"
+              disabled={!device.is_online}
+            >
+              설정 초기화
+            </button>
+          )}
+        </div>
+
+        {/* 카메라 제어 버튼 */}
         <div className="flex space-x-3">
           <ControlButton
             onClick={() => handleCameraControl('start')}

@@ -6,8 +6,40 @@ from typing import Optional, Literal
 
 
 class CameraControlRequest(BaseModel):
-    """카메라 제어 요청"""
+    """
+    카메라 제어 요청
+    
+    영상 sink 전송 기능:
+    - sink_url: 영상 sink 주소 (URL)
+    - stream_mode: 전송 방식 (mjpeg_stills, realtime_websocket, realtime_rtsp)
+    - frame_interval: 프레임 간격 (ms, 스틸컷일 경우)
+    """
     action: Literal["start", "pause", "stop"]
+    sink_url: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="영상 sink 주소 (URL). 예: http://192.168.1.100:8080/video, ws://192.168.1.100:8080/stream, rtsp://192.168.1.100:8554/stream"
+    )
+    stream_mode: Optional[Literal["mjpeg_stills", "realtime_websocket", "realtime_rtsp"]] = Field(
+        None,
+        description="전송 방식. mjpeg_stills: 주기적 JPEG 스틸컷, realtime_websocket: WebSocket 실시간 스트림, realtime_rtsp: RTSP 실시간 스트림"
+    )
+    frame_interval: Optional[int] = Field(
+        None,
+        ge=100,
+        le=10000,
+        description="프레임 간격 (밀리초, mjpeg_stills 모드일 경우만 사용). 최소 100ms, 최대 10000ms"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "action": "start",
+                "sink_url": "http://192.168.1.100:8080/video",
+                "stream_mode": "mjpeg_stills",
+                "frame_interval": 1000
+            }
+        }
 
 
 class MicrophoneControlRequest(BaseModel):

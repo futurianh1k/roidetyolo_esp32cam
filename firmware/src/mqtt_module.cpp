@@ -8,12 +8,14 @@
 #include "mqtt_module.h"
 #include "audio_module.h"
 #include "camera_module.h"
+#include "camera_module.h" // cameraSetSink, cameraClearSink
 #include "config.h"
 #include "display_module.h"
 #include "websocket_module.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
+
 
 // 외부 변수
 extern bool cameraActive;
@@ -45,7 +47,12 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
   String topicStr = String(topic);
 
   if (topicStr.endsWith("/camera")) {
-    handleCameraControl(action, requestId);
+    // ✨ 영상 sink 관련 파라미터 추출
+    const char *sinkUrl = doc["sink_url"] | nullptr;
+    const char *streamMode = doc["stream_mode"] | nullptr;
+    int frameInterval = doc["frame_interval"] | 1000;
+
+    handleCameraControl(action, requestId, sinkUrl, streamMode, frameInterval);
   } else if (topicStr.endsWith("/microphone")) {
     // ✨ ASR 관련 파라미터 추출 (있을 수도 있고 없을 수도 있음)
     const char *sessionId = doc["session_id"] | nullptr;
@@ -72,13 +79,31 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
 }
 
 /**
- * 카메라 제어 처리
+ * 카메라 제어 처리 (영상 sink 전송 포함)
+ *
+ * @param action 액션 (start, pause, stop)
+ * @param requestId 요청 ID
+ * @param sinkUrl 영상 sink 주소 (start일 때만 사용)
+ * @param streamMode 전송 방식 (start일 때만 사용)
+ * @param frameInterval 프레임 간격 (ms, start일 때만 사용)
  */
-void handleCameraControl(const char *action, const char *requestId) {
+void handleCameraControl(const char *action, const char *requestId,
+                         const char *sinkUrl, const char *streamMode,
+                         int frameInterval) {
   bool success = false;
   String message = "";
 
   if (strcmp(action, "start") == 0) {
+    // ✨ 영상 sink 설정 (있을 경우)
+    if (sinkUrl && streamMode) {
+      DEBUG_PRINTLN("📹 영상 sink 설정 수신");
+      DEBUG_PRINTF("   URL: %s\n", sinkUrl);
+      DEBUG_PRINTF("   모드: %s\n", streamMode);
+      DEBUG_PRINTF("   주기: %d ms\n", frameInterval);
+
+      cameraSetSink(sinkUrl, streamMode, frameInterval);
+    }
+
     if (cameraStart()) {
       cameraActive = true;
       success = true;
@@ -97,6 +122,7 @@ void handleCameraControl(const char *action, const char *requestId) {
     DEBUG_PRINTLN("Camera paused");
   } else if (strcmp(action, "stop") == 0) {
     cameraStop();
+    cameraClearSink(); // ✨ sink 설정 초기화
     cameraActive = false;
     success = true;
     message = "Camera stopped";

@@ -19,5 +19,10 @@ void cameraLoop();
 // 카메라 상태
 bool isCameraActive();
 
-#endif // CAMERA_MODULE_H
+// 영상 sink 설정
+void cameraSetSink(const char *sinkUrl, const char *streamMode,
+                   int frameInterval);
+void cameraClearSink();
+bool isCameraSinkActive();
 
+#endif // CAMERA_MODULE_H

@@ -40,6 +40,12 @@ async def control_camera(
     
     권한: OPERATOR 이상
     액션: start, pause, stop
+    
+    영상 sink 전송:
+    - start 액션 시 sink_url, stream_mode, frame_interval 설정 가능
+    - sink_url: 영상 sink 주소 (HTTP/WebSocket/RTSP URL)
+    - stream_mode: 전송 방식 (mjpeg_stills, realtime_websocket, realtime_rtsp)
+    - frame_interval: 프레임 간격 (ms, mjpeg_stills 모드일 경우)
     """
     # 장비 확인
     device = db.query(Device).filter(Device.id == device_id).first()
@@ -55,13 +61,37 @@ async def control_camera(
             detail="장비가 오프라인 상태입니다"
         )
     
+    # start 액션 시 sink 설정 검증
+    if control.action == "start":
+        if control.sink_url and not control.stream_mode:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="sink_url이 설정된 경우 stream_mode가 필요합니다"
+            )
+        if control.stream_mode == "mjpeg_stills" and not control.frame_interval:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="mjpeg_stills 모드일 경우 frame_interval가 필요합니다"
+            )
+    
     try:
-        # MQTT 명령 전송
+        # MQTT 명령 전송 (sink 정보 포함)
         mqtt = get_mqtt_service()
+        
+        # sink 정보가 있으면 MQTT 메시지에 포함
+        mqtt_kwargs = {}
+        if control.sink_url:
+            mqtt_kwargs["sink_url"] = control.sink_url
+        if control.stream_mode:
+            mqtt_kwargs["stream_mode"] = control.stream_mode
+        if control.frame_interval is not None:
+            mqtt_kwargs["frame_interval"] = control.frame_interval
+        
         request_id = mqtt.send_control_command(
             device_id=device.device_id,
             command="camera",
-            action=control.action
+            action=control.action,
+            **mqtt_kwargs
         )
         
         # TODO: 로그인 수정 후 감사 로그 활성화
@@ -77,9 +107,13 @@ async def control_camera(
         # db.add(audit_log)
         # db.commit()
         
-        logger.info(
-            f"장비 {device.device_name}의 카메라 제어: {control.action}"
-        )
+        # 로그에 sink 정보 포함
+        log_msg = f"장비 {device.device_name}의 카메라 제어: {control.action}"
+        if control.sink_url:
+            log_msg += f", sink_url={control.sink_url}, stream_mode={control.stream_mode}"
+            if control.frame_interval:
+                log_msg += f", frame_interval={control.frame_interval}ms"
+        logger.info(log_msg)
         
         return ControlResponse(
             success=True,
