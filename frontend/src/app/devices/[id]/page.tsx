@@ -403,8 +403,20 @@ export default function DeviceDetailPage() {
           {/* Voice Recognition Panel */}
           <VoiceRecognitionPanel
             device={device}
-            onResult={(result: RecognitionResult) => {
+            onResult={async (result: RecognitionResult) => {
               setRecognitionResults((prev) => [...prev, result]);
+              
+              // 📱 음성인식 결과를 장비 디스플레이에 표시
+              try {
+                // 응급 상황인 경우 특별 포맷팅
+                const displayText = result.is_emergency
+                  ? `🚨 응급: ${result.text}`
+                  : result.text;
+                
+                await controlAPI.display(device.id, 'show_text', displayText);
+              } catch (error) {
+                console.error('디스플레이 업데이트 실패:', error);
+              }
             }}
           />
 

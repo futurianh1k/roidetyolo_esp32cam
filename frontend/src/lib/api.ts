@@ -195,8 +195,11 @@ export const controlAPI = {
       frame_interval: frameInterval,
     }),
   
-  microphone: (deviceId: number, action: 'start' | 'pause' | 'stop' | 'start_asr' | 'stop_asr') =>
-    api.post(`/control/devices/${deviceId}/microphone`, { action }),
+  microphone: (deviceId: number, action: 'start' | 'pause' | 'stop' | 'start_asr' | 'stop_asr', wsUrl?: string) =>
+    api.post(`/control/devices/${deviceId}/microphone`, { 
+      action,
+      ws_url: wsUrl
+    }),
   
   speaker: (deviceId: number, action: 'play' | 'stop', audioFile?: string, volume?: number) =>
     api.post(`/control/devices/${deviceId}/speaker`, { 

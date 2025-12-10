@@ -22,6 +22,9 @@ export default function DeviceControl({ device }: DeviceControlProps) {
   const [sinkUrl, setSinkUrl] = useState<string>('');
   const [streamMode, setStreamMode] = useState<'mjpeg_stills' | 'realtime_websocket' | 'realtime_rtsp' | ''>('');
   const [frameInterval, setFrameInterval] = useState<number>(1000);
+  
+  // 오디오 WebSocket 설정
+  const [micWsUrl, setMicWsUrl] = useState<string>('');
 
   // 오디오 파일 목록 조회
   useEffect(() => {
@@ -140,7 +143,7 @@ export default function DeviceControl({ device }: DeviceControlProps) {
 
     setIsLoading(`mic-${action}`);
     try {
-      await controlAPI.microphone(device.id, action);
+      await controlAPI.microphone(device.id, action, micWsUrl || undefined);
       toast.success(`마이크 ${action === 'start' ? '시작' : action === 'pause' ? '일시정지' : '정지'} 명령 전송`);
     } catch (error) {
       toast.error('마이크 제어 실패');
@@ -374,6 +377,28 @@ export default function DeviceControl({ device }: DeviceControlProps) {
           <Mic className="h-5 w-5 text-gray-600 mr-2" />
           <h2 className="text-lg font-semibold text-gray-900">마이크 제어</h2>
         </div>
+        
+        {/* 오디오 WebSocket 설정 */}
+        <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">오디오 WebSocket 설정 (선택사항)</h3>
+          
+          {/* WebSocket URL 입력 */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-gray-600">WebSocket URL</label>
+            <input
+              type="text"
+              value={micWsUrl}
+              onChange={(e) => setMicWsUrl(e.target.value)}
+              placeholder="ws://192.168.1.100:8080/audio"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              disabled={!device.is_online}
+            />
+            <p className="text-xs text-gray-500">
+              오디오 스트림을 전송할 WebSocket 서버 주소 (예: ws://192.168.1.100:8080/audio)
+            </p>
+          </div>
+        </div>
+        
         <div className="flex space-x-3">
           <ControlButton
             onClick={() => handleMicControl('start')}
