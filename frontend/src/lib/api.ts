@@ -119,6 +119,14 @@ export interface DeviceCreateRequest {
   description?: string;
 }
 
+export interface DeviceUpdateRequest {
+  device_name?: string;
+  ip_address?: string;
+  mqtt_topic?: string;
+  location?: string;
+  description?: string;
+}
+
 export const devicesAPI = {
   getList: (params?: { page?: number; page_size?: number; is_online?: boolean }) =>
     api.get<{ devices: Device[]; total: number; page: number; page_size: number }>('/devices/', { params }),
@@ -128,6 +136,9 @@ export const devicesAPI = {
   
   create: (data: DeviceCreateRequest, config?: any) =>
     api.post<Device>('/devices/', data, config),
+  
+  update: (id: number, data: DeviceUpdateRequest) =>
+    api.put<Device>(`/devices/${id}`, data),
   
   delete: (id: number) =>
     api.delete(`/devices/${id}`),

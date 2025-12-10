@@ -21,6 +21,9 @@ import {
   RotateCw,
   Trash2,
   AlertTriangle,
+  Edit2,
+  Check,
+  X,
 } from 'lucide-react';
 import DeviceControl from '@/components/DeviceControl';
 import DeviceStatus from '@/components/DeviceStatus';
@@ -37,6 +40,9 @@ export default function DeviceDetailPage() {
   const [isRestarting, setIsRestarting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [recognitionResults, setRecognitionResults] = useState<RecognitionResult[]>([]);
+  const [isEditingIP, setIsEditingIP] = useState(false);
+  const [ipAddress, setIpAddress] = useState('');
+  const [isUpdatingIP, setIsUpdatingIP] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -56,6 +62,15 @@ export default function DeviceDetailPage() {
     // TODO: 로그인 수정 후 isAuthenticated 체크 활성화
     enabled: mounted && !isNaN(deviceId),
   });
+
+  // IP 주소 편집 상태 초기화
+  useEffect(() => {
+    if (device?.ip_address) {
+      setIpAddress(device.ip_address);
+    } else {
+      setIpAddress('');
+    }
+  }, [device?.ip_address]);
 
   // 장비 최신 상태 조회
   const { data: status, isLoading: statusLoading, refetch: refetchStatus } = useQuery({
@@ -122,6 +137,56 @@ export default function DeviceDetailPage() {
     } catch (error: any) {
       const errorMessage = error.response?.data?.detail || '장비 삭제에 실패했습니다';
       toast.error(errorMessage);
+    }
+  };
+
+  const handleIPEditStart = () => {
+    setIpAddress(device?.ip_address || '');
+    setIsEditingIP(true);
+  };
+
+  const handleIPEditCancel = () => {
+    setIpAddress(device?.ip_address || '');
+    setIsEditingIP(false);
+  };
+
+  const handleIPUpdate = async () => {
+    if (!device) return;
+
+    // IP 주소 형식 검증 (더 엄격한 검증)
+    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (ipAddress && ipAddress.trim() !== '') {
+      if (!ipRegex.test(ipAddress.trim())) {
+        toast.error('유효하지 않은 IP 주소 형식입니다 (예: 192.168.1.100)');
+        return;
+      }
+      
+      // 각 옥텟이 0-255 범위인지 확인
+      const parts = ipAddress.trim().split('.');
+      const isValid = parts.every(part => {
+        const num = parseInt(part, 10);
+        return num >= 0 && num <= 255;
+      });
+      
+      if (!isValid) {
+        toast.error('IP 주소의 각 숫자는 0-255 범위여야 합니다');
+        return;
+      }
+    }
+
+    setIsUpdatingIP(true);
+    try {
+      await devicesAPI.update(deviceId, { 
+        ip_address: ipAddress.trim() || null 
+      });
+      toast.success('IP 주소가 업데이트되었습니다');
+      setIsEditingIP(false);
+      refetchDevice(); // 장비 정보 새로고침
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || 'IP 주소 업데이트에 실패했습니다';
+      toast.error(errorMessage);
+    } finally {
+      setIsUpdatingIP(false);
     }
   };
 
@@ -223,6 +288,108 @@ export default function DeviceDetailPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* 장비 정보 섹션 */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">장비 정보</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                IP 주소
+                <span className="ml-2 text-xs text-gray-500 font-normal">
+                  (장비가 접근할 수 있는 백엔드 서버 주소)
+                </span>
+              </label>
+              <div className="flex items-center space-x-2">
+                {isEditingIP ? (
+                  <>
+                    <input
+                      type="text"
+                      value={ipAddress}
+                      onChange={(e) => setIpAddress(e.target.value)}
+                      placeholder="예: 192.168.1.100"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      disabled={isUpdatingIP}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isUpdatingIP) {
+                          handleIPUpdate();
+                        } else if (e.key === 'Escape' && !isUpdatingIP) {
+                          handleIPEditCancel();
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={handleIPUpdate}
+                      disabled={isUpdatingIP}
+                      className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="저장 (Enter)"
+                    >
+                      {isUpdatingIP ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      ) : (
+                        <Check className="h-4 w-4" />
+                      )}
+                    </button>
+                    <button
+                      onClick={handleIPEditCancel}
+                      disabled={isUpdatingIP}
+                      className="p-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="취소 (ESC)"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
+                      {device.ip_address || (
+                        <span className="text-gray-400 italic">미설정</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleIPEditStart}
+                      className="p-2 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
+                      title="IP 주소 편집"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+              </div>
+              {!isEditingIP && !device.ip_address && (
+                <p className="mt-1 text-xs text-amber-600">
+                  ⚠️ IP 주소를 설정하면 장비에서 오디오 파일을 다운로드할 수 있습니다
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                장비 ID
+              </label>
+              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
+                {device.device_id}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                위치
+              </label>
+              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
+                {device.location || '미설정'}
+              </div>
+            </div>
+            {device.description && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  설명
+                </label>
+                <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
+                  {device.description}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Device Status */}
           <DeviceStatus device={device} status={status} isLoading={statusLoading} />
