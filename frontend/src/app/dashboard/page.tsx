@@ -54,20 +54,25 @@ export default function DashboardPage() {
   });
 
   // 장비 목록 조회
-  const { data: devicesData, isLoading: devicesLoading, refetch } = useQuery({
+  const { data: devicesData, isLoading: devicesLoading, refetch, error: devicesError } = useQuery({
     queryKey: ['devices'],
     queryFn: async () => {
       try {
+        console.log('장비 목록 조회 중...');
         const { data } = await devicesAPI.getList({ page: 1, page_size: 100 });
+        console.log('장비 목록 조회 성공:', data);
         return data;
-      } catch (error) {
+      } catch (error: any) {
         console.error('장비 목록 조회 실패:', error);
-        // 임시: 빈 목록 반환
-        return { devices: [], total: 0, page: 1, page_size: 100 };
+        console.error('에러 상세:', error.response?.data || error.message);
+        toast.error(`장비 목록을 불러올 수 없습니다: ${error.response?.data?.detail || error.message}`);
+        throw error; // 에러를 다시 throw하여 useQuery가 에러 상태를 추적하도록 함
       }
     },
     enabled: mounted,
     refetchInterval: 10000, // 10초마다 자동 갱신
+    retry: 3, // 3번 재시도
+    retryDelay: 1000, // 1초 간격
   });
 
   const handleLogout = async () => {
@@ -104,6 +109,13 @@ export default function DashboardPage() {
   const devices = devicesData?.devices || [];
   const onlineDevices = devices.filter(d => d.is_online).length;
   const offlineDevices = devices.length - onlineDevices;
+
+  // 에러 발생 시 사용자에게 알림
+  useEffect(() => {
+    if (devicesError) {
+      console.error('장비 목록 조회 에러:', devicesError);
+    }
+  }, [devicesError]);
 
   return (
     <div className="min-h-screen bg-gray-50">

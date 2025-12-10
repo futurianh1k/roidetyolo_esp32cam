@@ -105,16 +105,34 @@ async def register_device(
     
     권한: OPERATOR 이상
     """
-    # 중복 확인
+    # 중복 확인 1: device_id 중복
     existing_device = db.query(Device).filter(
         Device.device_id == device_data.device_id
     ).first()
     
     if existing_device:
+        logger.warning(f"⚠️ 중복 장비 ID 등록 시도: {device_data.device_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="이미 등록된 장비 ID입니다"
+            detail=f"이미 등록된 장비 ID입니다: {device_data.device_id}"
         )
+    
+    # 중복 확인 2: IP 주소 중복 (IP가 제공된 경우)
+    if device_data.ip_address:
+        existing_ip_device = db.query(Device).filter(
+            Device.ip_address == device_data.ip_address
+        ).first()
+        
+        if existing_ip_device:
+            logger.warning(
+                f"⚠️ 중복 IP 주소 등록 시도: {device_data.ip_address} "
+                f"(기존 장비: {existing_ip_device.device_id})"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"이미 사용 중인 IP 주소입니다: {device_data.ip_address} "
+                       f"(등록된 장비: {existing_ip_device.device_name})"
+            )
     
     # RTSP URL 생성
     rtsp_url = None
