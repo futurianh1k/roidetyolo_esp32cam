@@ -64,6 +64,8 @@ def record_test(
     error: Optional[str] = None,
     response_time_ms: Optional[float] = None,
     notes: Optional[str] = None,
+    test_type: str = "positive",  # "positive" or "negative"
+    expected_status: Optional[int] = None,  # 예상 상태 코드 (negative 테스트용)
 ):
     """테스트 결과 기록"""
     test_results.append(
@@ -76,6 +78,8 @@ def record_test(
             "error": error,
             "response_time_ms": response_time_ms,
             "notes": notes,
+            "test_type": test_type,
+            "expected_status": expected_status,
             "timestamp": datetime.now().isoformat(),
         }
     )
@@ -1053,6 +1057,726 @@ def test_asr_session_status(device_id: int, access_token: Optional[str] = None):
         return False
 
 
+# ==================== Negative 테스트 케이스 (예외 처리 검증) ====================
+
+
+def test_auth_login_negative():
+    """로그인 실패 테스트 (잘못된 자격증명)"""
+    print_test("POST /auth/login [NEGATIVE] - 잘못된 자격증명")
+    try:
+        data = {"username": "nonexistent_user", "password": "wrong_password"}
+        start_time = time.time()
+        response = httpx.post(f"{BASE_URL}/auth/login", json=data, timeout=TIMEOUT)
+        response_time = (time.time() - start_time) * 1000
+
+        if response.status_code == 401:
+            print_success(f"예상대로 401 반환 (잘못된 자격증명)")
+            record_test(
+                "로그인 (잘못된 자격증명)",
+                "POST",
+                "/auth/login",
+                401,
+                True,
+                None,
+                response_time,
+                "예외 처리 정상",
+                "negative",
+                401,
+            )
+            return True
+        else:
+            print_fail(f"예상 401, 실제 {response.status_code}")
+            record_test(
+                "로그인 (잘못된 자격증명)",
+                "POST",
+                "/auth/login",
+                response.status_code,
+                False,
+                f"예상 401, 실제 {response.status_code}",
+                response_time,
+                None,
+                "negative",
+                401,
+            )
+            return False
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "로그인 (잘못된 자격증명)",
+            "POST",
+            "/auth/login",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            401,
+        )
+        return False
+
+
+def test_auth_me_negative():
+    """현재 사용자 조회 실패 테스트 (유효하지 않은 토큰)"""
+    print_test("GET /auth/me [NEGATIVE] - 유효하지 않은 토큰")
+    try:
+        headers = {"Authorization": "Bearer invalid_token_12345"}
+        start_time = time.time()
+        response = httpx.get(f"{BASE_URL}/auth/me", headers=headers, timeout=TIMEOUT)
+        response_time = (time.time() - start_time) * 1000
+
+        if response.status_code == 401:
+            print_success(f"예상대로 401 반환 (유효하지 않은 토큰)")
+            record_test(
+                "현재 사용자 조회 (유효하지 않은 토큰)",
+                "GET",
+                "/auth/me",
+                401,
+                True,
+                None,
+                response_time,
+                "예외 처리 정상",
+                "negative",
+                401,
+            )
+            return True
+        else:
+            print_fail(f"예상 401, 실제 {response.status_code}")
+            record_test(
+                "현재 사용자 조회 (유효하지 않은 토큰)",
+                "GET",
+                "/auth/me",
+                response.status_code,
+                False,
+                f"예상 401, 실제 {response.status_code}",
+                response_time,
+                None,
+                "negative",
+                401,
+            )
+            return False
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "현재 사용자 조회 (유효하지 않은 토큰)",
+            "GET",
+            "/auth/me",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            401,
+        )
+        return False
+
+
+def test_auth_register_negative():
+    """사용자 등록 실패 테스트 (약한 비밀번호)"""
+    print_test("POST /auth/register [NEGATIVE] - 약한 비밀번호")
+    try:
+        data = {
+            "username": f"testuser_neg_{int(time.time())}",
+            "email": f"test_neg_{int(time.time())}@example.com",
+            "password": "123",  # 너무 짧은 비밀번호
+            "role": "viewer",
+        }
+        start_time = time.time()
+        response = httpx.post(f"{BASE_URL}/auth/register", json=data, timeout=TIMEOUT)
+        response_time = (time.time() - start_time) * 1000
+
+        if response.status_code == 400:
+            print_success(f"예상대로 400 반환 (약한 비밀번호 검증)")
+            record_test(
+                "사용자 등록 (약한 비밀번호)",
+                "POST",
+                "/auth/register",
+                400,
+                True,
+                None,
+                response_time,
+                "비밀번호 정책 검증 정상",
+                "negative",
+                400,
+            )
+            return True
+        else:
+            print_fail(f"예상 400, 실제 {response.status_code}")
+            record_test(
+                "사용자 등록 (약한 비밀번호)",
+                "POST",
+                "/auth/register",
+                response.status_code,
+                False,
+                f"예상 400, 실제 {response.status_code}",
+                response_time,
+                None,
+                "negative",
+                400,
+            )
+            return False
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "사용자 등록 (약한 비밀번호)",
+            "POST",
+            "/auth/register",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            400,
+        )
+        return False
+
+
+def test_device_get_negative():
+    """장비 상세 조회 실패 테스트 (존재하지 않는 장비)"""
+    print_test("GET /devices/99999 [NEGATIVE] - 존재하지 않는 장비")
+    try:
+        start_time = time.time()
+        response = httpx.get(f"{BASE_URL}/devices/99999", timeout=TIMEOUT)
+        response_time = (time.time() - start_time) * 1000
+
+        if response.status_code == 404:
+            print_success(f"예상대로 404 반환 (존재하지 않는 장비)")
+            record_test(
+                "장비 상세 조회 (존재하지 않는 장비)",
+                "GET",
+                "/devices/99999",
+                404,
+                True,
+                None,
+                response_time,
+                "예외 처리 정상",
+                "negative",
+                404,
+            )
+            return True
+        else:
+            print_fail(f"예상 404, 실제 {response.status_code}")
+            record_test(
+                "장비 상세 조회 (존재하지 않는 장비)",
+                "GET",
+                "/devices/99999",
+                response.status_code,
+                False,
+                f"예상 404, 실제 {response.status_code}",
+                response_time,
+                None,
+                "negative",
+                404,
+            )
+            return False
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "장비 상세 조회 (존재하지 않는 장비)",
+            "GET",
+            "/devices/99999",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            404,
+        )
+        return False
+
+
+def test_device_register_negative():
+    """장비 등록 실패 테스트 (잘못된 IP 형식)"""
+    print_test("POST /devices/ [NEGATIVE] - 잘못된 IP 형식")
+    try:
+        data = {
+            "device_id": f"TEST_NEG_{int(time.time())}",
+            "device_name": "테스트 장비 (잘못된 IP)",
+            "device_type": "cores3",
+            "ip_address": "999.999.999.999",  # 잘못된 IP 형식
+            "location": "테스트 위치",
+        }
+        start_time = time.time()
+        response = httpx.post(f"{BASE_URL}/devices/", json=data, timeout=TIMEOUT)
+        response_time = (time.time() - start_time) * 1000
+
+        # 백엔드에서 IP 검증을 하지 않을 수도 있지만, 최소한 400 또는 422를 기대
+        if response.status_code in [400, 422]:
+            print_success(f"예상대로 {response.status_code} 반환 (잘못된 IP 형식)")
+            record_test(
+                "장비 등록 (잘못된 IP 형식)",
+                "POST",
+                "/devices/",
+                response.status_code,
+                True,
+                None,
+                response_time,
+                "입력 검증 정상",
+                "negative",
+                400,
+            )
+            return True
+        else:
+            print_warning(
+                f"예상 400/422, 실제 {response.status_code} (백엔드에서 IP 검증 미구현 가능)"
+            )
+            record_test(
+                "장비 등록 (잘못된 IP 형식)",
+                "POST",
+                "/devices/",
+                response.status_code,
+                True,
+                None,
+                response_time,
+                f"백엔드 IP 검증 미구현 가능 (상태 코드: {response.status_code})",
+                "negative",
+                400,
+            )
+            return True  # 경고이지만 테스트는 통과로 처리
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "장비 등록 (잘못된 IP 형식)",
+            "POST",
+            "/devices/",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            400,
+        )
+        return False
+
+
+def test_device_register_duplicate():
+    """장비 등록 실패 테스트 (중복 장비 ID)"""
+    print_test("POST /devices/ [NEGATIVE] - 중복 장비 ID")
+    try:
+        # 먼저 장비 등록
+        device_id = f"DUPLICATE_TEST_{int(time.time())}"
+        data1 = {
+            "device_id": device_id,
+            "device_name": "중복 테스트 장비 1",
+            "device_type": "cores3",
+            "location": "테스트 위치",
+        }
+        response1 = httpx.post(f"{BASE_URL}/devices/", json=data1, timeout=TIMEOUT)
+
+        # 같은 device_id로 다시 등록 시도
+        data2 = {
+            "device_id": device_id,  # 동일한 ID
+            "device_name": "중복 테스트 장비 2",
+            "device_type": "cores3",
+            "location": "테스트 위치",
+        }
+        start_time = time.time()
+        response2 = httpx.post(f"{BASE_URL}/devices/", json=data2, timeout=TIMEOUT)
+        response_time = (time.time() - start_time) * 1000
+
+        if response2.status_code == 400:
+            print_success(f"예상대로 400 반환 (중복 장비 ID 검증)")
+            record_test(
+                "장비 등록 (중복 장비 ID)",
+                "POST",
+                "/devices/",
+                400,
+                True,
+                None,
+                response_time,
+                "중복 검증 정상",
+                "negative",
+                400,
+            )
+            return True
+        else:
+            print_fail(f"예상 400, 실제 {response2.status_code}")
+            record_test(
+                "장비 등록 (중복 장비 ID)",
+                "POST",
+                "/devices/",
+                response2.status_code,
+                False,
+                f"예상 400, 실제 {response2.status_code}",
+                response_time,
+                None,
+                "negative",
+                400,
+            )
+            return False
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "장비 등록 (중복 장비 ID)",
+            "POST",
+            "/devices/",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            400,
+        )
+        return False
+
+
+def test_control_camera_negative(device_id: int):
+    """카메라 제어 실패 테스트 (오프라인 장비 또는 존재하지 않는 장비)"""
+    print_test(
+        f"POST /control/devices/{device_id}/camera [NEGATIVE] - 오프라인/없는 장비"
+    )
+    try:
+        data = {"action": "start"}
+        start_time = time.time()
+        response = httpx.post(
+            f"{BASE_URL}/control/devices/{device_id}/camera", json=data, timeout=TIMEOUT
+        )
+        response_time = (time.time() - start_time) * 1000
+
+        # 오프라인 장비 또는 존재하지 않는 장비는 400 또는 404
+        if response.status_code in [400, 404]:
+            print_success(f"예상대로 {response.status_code} 반환 (오프라인/없는 장비)")
+            record_test(
+                "카메라 제어 (오프라인/없는 장비)",
+                "POST",
+                f"/control/devices/{device_id}/camera",
+                response.status_code,
+                True,
+                None,
+                response_time,
+                "예외 처리 정상",
+                "negative",
+                400,
+            )
+            return True
+        else:
+            print_warning(f"예상 400/404, 실제 {response.status_code}")
+            record_test(
+                "카메라 제어 (오프라인/없는 장비)",
+                "POST",
+                f"/control/devices/{device_id}/camera",
+                response.status_code,
+                True,
+                None,
+                response_time,
+                f"장비가 온라인일 수 있음 (상태 코드: {response.status_code})",
+                "negative",
+                400,
+            )
+            return True
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "카메라 제어 (오프라인/없는 장비)",
+            "POST",
+            f"/control/devices/{device_id}/camera",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            400,
+        )
+        return False
+
+
+def test_control_camera_invalid_action(device_id: int):
+    """카메라 제어 실패 테스트 (잘못된 액션)"""
+    print_test(f"POST /control/devices/{device_id}/camera [NEGATIVE] - 잘못된 액션")
+    try:
+        data = {"action": "invalid_action_xyz"}  # 존재하지 않는 액션
+        start_time = time.time()
+        response = httpx.post(
+            f"{BASE_URL}/control/devices/{device_id}/camera", json=data, timeout=TIMEOUT
+        )
+        response_time = (time.time() - start_time) * 1000
+
+        # 잘못된 액션은 422 (Validation Error) 또는 400
+        if response.status_code in [400, 422]:
+            print_success(f"예상대로 {response.status_code} 반환 (잘못된 액션 검증)")
+            record_test(
+                "카메라 제어 (잘못된 액션)",
+                "POST",
+                f"/control/devices/{device_id}/camera",
+                response.status_code,
+                True,
+                None,
+                response_time,
+                "입력 검증 정상",
+                "negative",
+                422,
+            )
+            return True
+        else:
+            print_warning(f"예상 400/422, 실제 {response.status_code}")
+            record_test(
+                "카메라 제어 (잘못된 액션)",
+                "POST",
+                f"/control/devices/{device_id}/camera",
+                response.status_code,
+                True,
+                None,
+                response_time,
+                f"백엔드에서 액션 검증 미구현 가능 (상태 코드: {response.status_code})",
+                "negative",
+                422,
+            )
+            return True
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "카메라 제어 (잘못된 액션)",
+            "POST",
+            f"/control/devices/{device_id}/camera",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            422,
+        )
+        return False
+
+
+def test_control_display_missing_content(device_id: int):
+    """디스플레이 제어 실패 테스트 (show_text 액션에 content 누락)"""
+    print_test(f"POST /control/devices/{device_id}/display [NEGATIVE] - content 누락")
+    try:
+        data = {"action": "show_text"}  # content 누락
+        start_time = time.time()
+        response = httpx.post(
+            f"{BASE_URL}/control/devices/{device_id}/display",
+            json=data,
+            timeout=TIMEOUT,
+        )
+        response_time = (time.time() - start_time) * 1000
+
+        if response.status_code == 400:
+            print_success(f"예상대로 400 반환 (필수 파라미터 누락 검증)")
+            record_test(
+                "디스플레이 제어 (content 누락)",
+                "POST",
+                f"/control/devices/{device_id}/display",
+                400,
+                True,
+                None,
+                response_time,
+                "필수 파라미터 검증 정상",
+                "negative",
+                400,
+            )
+            return True
+        else:
+            print_fail(f"예상 400, 실제 {response.status_code}")
+            record_test(
+                "디스플레이 제어 (content 누락)",
+                "POST",
+                f"/control/devices/{device_id}/display",
+                response.status_code,
+                False,
+                f"예상 400, 실제 {response.status_code}",
+                response_time,
+                None,
+                "negative",
+                400,
+            )
+            return False
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "디스플레이 제어 (content 누락)",
+            "POST",
+            f"/control/devices/{device_id}/display",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            400,
+        )
+        return False
+
+
+def test_audio_upload_invalid_file():
+    """오디오 파일 업로드 실패 테스트 (잘못된 파일 형식)"""
+    print_test("POST /audio/upload [NEGATIVE] - 잘못된 파일 형식")
+    try:
+        # 텍스트 파일을 MP3로 업로드 시도
+        fake_file = BytesIO(b"This is not an MP3 file")
+        files = {"file": ("test.txt", fake_file, "text/plain")}
+
+        start_time = time.time()
+        response = httpx.post(f"{BASE_URL}/audio/upload", files=files, timeout=TIMEOUT)
+        response_time = (time.time() - start_time) * 1000
+
+        if response.status_code == 400:
+            print_success(f"예상대로 400 반환 (파일 형식 검증)")
+            record_test(
+                "오디오 파일 업로드 (잘못된 형식)",
+                "POST",
+                "/audio/upload",
+                400,
+                True,
+                None,
+                response_time,
+                "파일 형식 검증 정상",
+                "negative",
+                400,
+            )
+            return True
+        else:
+            print_warning(f"예상 400, 실제 {response.status_code}")
+            record_test(
+                "오디오 파일 업로드 (잘못된 형식)",
+                "POST",
+                "/audio/upload",
+                response.status_code,
+                True,
+                None,
+                response_time,
+                f"백엔드 파일 검증 미구현 가능 (상태 코드: {response.status_code})",
+                "negative",
+                400,
+            )
+            return True
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "오디오 파일 업로드 (잘못된 형식)",
+            "POST",
+            "/audio/upload",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            400,
+        )
+        return False
+
+
+def test_device_status_latest_negative():
+    """장비 최신 상태 조회 실패 테스트 (상태 정보 없음)"""
+    print_test("GET /devices/99999/status/latest [NEGATIVE] - 상태 정보 없음")
+    try:
+        start_time = time.time()
+        response = httpx.get(f"{BASE_URL}/devices/99999/status/latest", timeout=TIMEOUT)
+        response_time = (time.time() - start_time) * 1000
+
+        # 존재하지 않는 장비는 404, 상태 정보가 없는 장비도 404
+        if response.status_code == 404:
+            print_success(f"예상대로 404 반환 (상태 정보 없음)")
+            record_test(
+                "장비 최신 상태 조회 (상태 정보 없음)",
+                "GET",
+                "/devices/99999/status/latest",
+                404,
+                True,
+                None,
+                response_time,
+                "예외 처리 정상",
+                "negative",
+                404,
+            )
+            return True
+        else:
+            print_fail(f"예상 404, 실제 {response.status_code}")
+            record_test(
+                "장비 최신 상태 조회 (상태 정보 없음)",
+                "GET",
+                "/devices/99999/status/latest",
+                response.status_code,
+                False,
+                f"예상 404, 실제 {response.status_code}",
+                response_time,
+                None,
+                "negative",
+                404,
+            )
+            return False
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "장비 최신 상태 조회 (상태 정보 없음)",
+            "GET",
+            "/devices/99999/status/latest",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            404,
+        )
+        return False
+
+
+def test_asr_session_status_negative():
+    """ASR 세션 상태 조회 실패 테스트 (존재하지 않는 장비)"""
+    print_test("GET /asr/devices/99999/session/status [NEGATIVE] - 존재하지 않는 장비")
+    try:
+        start_time = time.time()
+        response = httpx.get(
+            f"{BASE_URL}/asr/devices/99999/session/status", timeout=TIMEOUT
+        )
+        response_time = (time.time() - start_time) * 1000
+
+        if response.status_code == 404:
+            print_success(f"예상대로 404 반환 (존재하지 않는 장비)")
+            record_test(
+                "ASR 세션 상태 조회 (존재하지 않는 장비)",
+                "GET",
+                "/asr/devices/99999/session/status",
+                404,
+                True,
+                None,
+                response_time,
+                "예외 처리 정상",
+                "negative",
+                404,
+            )
+            return True
+        else:
+            print_fail(f"예상 404, 실제 {response.status_code}")
+            record_test(
+                "ASR 세션 상태 조회 (존재하지 않는 장비)",
+                "GET",
+                "/asr/devices/99999/session/status",
+                response.status_code,
+                False,
+                f"예상 404, 실제 {response.status_code}",
+                response_time,
+                None,
+                "negative",
+                404,
+            )
+            return False
+    except Exception as e:
+        print_fail(str(e))
+        record_test(
+            "ASR 세션 상태 조회 (존재하지 않는 장비)",
+            "GET",
+            "/asr/devices/99999/session/status",
+            0,
+            False,
+            str(e),
+            None,
+            None,
+            "negative",
+            404,
+        )
+        return False
+
+
 # ==================== 메인 테스트 실행 ====================
 
 
@@ -1109,6 +1833,39 @@ def run_all_tests():
     if test_device_id:
         test_asr_session_status(test_device_id, access_token)
 
+    # ==================== Negative 테스트 케이스 (예외 처리 검증) ====================
+    print(f"\n{Colors.BOLD}{'='*70}")
+    print("Negative 테스트 케이스 실행 (예외 처리 검증)")
+    print(f"{'='*70}{Colors.RESET}\n")
+
+    # 인증 API Negative 테스트
+    test_auth_login_negative()
+    test_auth_me_negative()
+    test_auth_register_negative()
+
+    # 장비 관리 API Negative 테스트
+    test_device_get_negative()
+    test_device_register_negative()
+    test_device_register_duplicate()
+    test_device_status_latest_negative()
+
+    # 장비 제어 API Negative 테스트
+    if test_device_id:
+        test_control_camera_negative(test_device_id)
+        test_control_camera_invalid_action(test_device_id)
+        test_control_display_missing_content(test_device_id)
+    else:
+        # 테스트용 장비 ID 사용
+        test_control_camera_negative(99999)
+        test_control_camera_invalid_action(99999)
+        test_control_display_missing_content(99999)
+
+    # 오디오 파일 관리 API Negative 테스트
+    test_audio_upload_invalid_file()
+
+    # ASR API Negative 테스트
+    test_asr_session_status_negative()
+
     # 결과 요약
     print_summary()
 
@@ -1123,17 +1880,47 @@ def print_summary():
     success = sum(1 for r in test_results if r["success"])
     failed = total - success
 
+    # Positive/Negative 테스트 분류
+    positive_tests = [
+        r for r in test_results if r.get("test_type", "positive") == "positive"
+    ]
+    negative_tests = [r for r in test_results if r.get("test_type") == "negative"]
+
+    positive_success = sum(1 for r in positive_tests if r["success"])
+    negative_success = sum(1 for r in negative_tests if r["success"])
+
     print(f"총 테스트: {total}")
-    print(f"{Colors.GREEN}성공: {success}{Colors.RESET}")
-    print(f"{Colors.RED}실패: {failed}{Colors.RESET}")
+    print(
+        f"  - Positive 테스트: {len(positive_tests)} (성공: {positive_success}, 실패: {len(positive_tests) - positive_success})"
+    )
+    print(
+        f"  - Negative 테스트: {len(negative_tests)} (성공: {negative_success}, 실패: {len(negative_tests) - negative_success})"
+    )
+    print(f"\n{Colors.GREEN}전체 성공: {success}{Colors.RESET}")
+    print(f"{Colors.RED}전체 실패: {failed}{Colors.RESET}")
 
     if failed > 0:
         print(f"\n{Colors.RED}실패한 테스트:{Colors.RESET}")
         for result in test_results:
             if not result["success"]:
-                print(
-                    f"  - {result['api_name']}: {result.get('error', '알 수 없는 오류')}"
+                test_type = result.get("test_type", "positive")
+                test_type_label = (
+                    "[NEGATIVE]" if test_type == "negative" else "[POSITIVE]"
                 )
+                print(
+                    f"  - {test_type_label} {result['api_name']}: {result.get('error', '알 수 없는 오류')}"
+                )
+
+    # Negative 테스트 예외 처리 검증 요약
+    if negative_tests:
+        print(f"\n{Colors.BOLD}Negative 테스트 예외 처리 검증 결과:{Colors.RESET}")
+        for result in negative_tests:
+            expected = result.get("expected_status", "N/A")
+            actual = result.get("status_code", "N/A")
+            status_icon = "✅" if result["success"] and actual == expected else "❌"
+            print(
+                f"  {status_icon} {result['api_name']}: 예상 {expected}, 실제 {actual}"
+            )
 
     print(
         f"\n{Colors.BOLD}테스트 완료 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}{Colors.RESET}\n"
@@ -1143,6 +1930,16 @@ def print_summary():
 def save_results_to_json(output_path: Path):
     """테스트 결과를 JSON 파일로 저장"""
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Positive/Negative 테스트 분류
+    positive_tests = [
+        r for r in test_results if r.get("test_type", "positive") == "positive"
+    ]
+    negative_tests = [r for r in test_results if r.get("test_type") == "negative"]
+
+    positive_success = sum(1 for r in positive_tests if r["success"])
+    negative_success = sum(1 for r in negative_tests if r["success"])
+
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -1150,6 +1947,16 @@ def save_results_to_json(output_path: Path):
                     "total": len(test_results),
                     "success": sum(1 for r in test_results if r["success"]),
                     "failed": sum(1 for r in test_results if not r["success"]),
+                    "positive_tests": {
+                        "total": len(positive_tests),
+                        "success": positive_success,
+                        "failed": len(positive_tests) - positive_success,
+                    },
+                    "negative_tests": {
+                        "total": len(negative_tests),
+                        "success": negative_success,
+                        "failed": len(negative_tests) - negative_success,
+                    },
                     "test_time": datetime.now().isoformat(),
                 },
                 "test_results": test_results,

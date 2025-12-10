@@ -18,17 +18,20 @@ def generate_markdown_table(results: List[Dict]) -> str:
     """테스트 결과를 마크다운 테이블로 변환"""
     table = []
     table.append(
-        "| API 이름 | 메서드 | 엔드포인트 | 상태 코드 | 성공 여부 | 응답 시간 (ms) | 비고 |"
+        "| 테스트 타입 | API 이름 | 메서드 | 엔드포인트 | 상태 코드 | 예상 상태 | 성공 여부 | 응답 시간 (ms) | 비고 |"
     )
     table.append(
-        "|---------|--------|-----------|-----------|----------|---------------|------|"
+        "|-----------|---------|--------|-----------|-----------|----------|----------|---------------|------|"
     )
 
     for result in results:
+        test_type = result.get("test_type", "positive")
+        test_type_label = "✅ Positive" if test_type == "positive" else "❌ Negative"
         api_name = result.get("api_name", "N/A")
         method = result.get("method", "N/A")
         endpoint = result.get("endpoint", "N/A")
         status_code = result.get("status_code", 0)
+        expected_status = result.get("expected_status", "N/A")
         success = "✅ 성공" if result.get("success") else "❌ 실패"
         response_time = (
             f"{result.get('response_time_ms', 0):.2f}"
@@ -48,7 +51,7 @@ def generate_markdown_table(results: List[Dict]) -> str:
             status_display = f"❌ {status_code}"
 
         table.append(
-            f"| {api_name} | {method} | `{endpoint}` | {status_display} | {success} | {response_time} | {notes[:50]} |"
+            f"| {test_type_label} | {api_name} | {method} | `{endpoint}` | {status_display} | {expected_status} | {success} | {response_time} | {notes[:50]} |"
         )
 
     return "\n".join(table)
@@ -81,6 +84,42 @@ def generate_markdown_report(test_results_path: Path, output_path: Path):
         f"- **성공률**: {(summary.get('success', 0) / summary.get('total', 1) * 100):.1f}%"
     )
     md_content.append("")
+
+    # Positive/Negative 테스트 분류
+    positive_summary = summary.get("positive_tests", {})
+    negative_summary = summary.get("negative_tests", {})
+
+    if positive_summary or negative_summary:
+        md_content.append("### 테스트 타입별 통계")
+        md_content.append("")
+        md_content.append("| 테스트 타입 | 총 테스트 | 성공 | 실패 | 성공률 |")
+        md_content.append("|-----------|----------|------|------|--------|")
+
+        if positive_summary:
+            pos_total = positive_summary.get("total", 0)
+            pos_success = positive_summary.get("success", 0)
+            pos_failed = positive_summary.get("failed", 0)
+            pos_rate = (pos_success / pos_total * 100) if pos_total > 0 else 0
+            md_content.append(
+                f"| ✅ Positive | {pos_total} | {pos_success} | {pos_failed} | {pos_rate:.1f}% |"
+            )
+
+        if negative_summary:
+            neg_total = negative_summary.get("total", 0)
+            neg_success = negative_summary.get("success", 0)
+            neg_failed = negative_summary.get("failed", 0)
+            neg_rate = (neg_success / neg_total * 100) if neg_total > 0 else 0
+            md_content.append(
+                f"| ❌ Negative | {neg_total} | {neg_success} | {neg_failed} | {neg_rate:.1f}% |"
+            )
+
+        md_content.append("")
+        md_content.append("**참고**:")
+        md_content.append("- **Positive 테스트**: 정상 동작을 검증하는 테스트")
+        md_content.append(
+            "- **Negative 테스트**: 예외 처리 및 에러 핸들링을 검증하는 테스트"
+        )
+        md_content.append("")
 
     # API 그룹별 통계
     md_content.append("## API 그룹별 통계")
@@ -129,18 +168,54 @@ def generate_markdown_report(test_results_path: Path, output_path: Path):
     md_content.append(generate_markdown_table(results))
     md_content.append("")
 
+    # Negative 테스트 예외 처리 검증 결과
+    negative_tests = [r for r in results if r.get("test_type") == "negative"]
+    if negative_tests:
+        md_content.append("## Negative 테스트 예외 처리 검증 결과")
+        md_content.append("")
+        md_content.append(
+            "| API 이름 | 예상 상태 코드 | 실제 상태 코드 | 검증 결과 | 비고 |"
+        )
+        md_content.append("|---------|-------------|-------------|----------|------|")
+
+        for result in negative_tests:
+            expected = result.get("expected_status", "N/A")
+            actual = result.get("status_code", "N/A")
+            is_valid = result.get("success") and (
+                actual == expected
+                or (
+                    isinstance(expected, int)
+                    and isinstance(actual, int)
+                    and actual in [400, 404, 422]
+                )
+            )
+            validation_result = "✅ 통과" if is_valid else "❌ 실패"
+            notes = result.get("notes", "") or result.get("error", "")
+
+            md_content.append(
+                f"| {result.get('api_name')} | {expected} | {actual} | {validation_result} | {notes[:50]} |"
+            )
+
+        md_content.append("")
+
     # 실패한 테스트 상세
     failed_tests = [r for r in results if not r.get("success")]
     if failed_tests:
         md_content.append("## 실패한 테스트 상세")
         md_content.append("")
         for result in failed_tests:
-            md_content.append(f"### {result.get('api_name')}")
+            test_type = result.get("test_type", "positive")
+            test_type_label = "[POSITIVE]" if test_type == "positive" else "[NEGATIVE]"
+            md_content.append(f"### {test_type_label} {result.get('api_name')}")
             md_content.append("")
             md_content.append(
                 f"- **엔드포인트**: `{result.get('method')} {result.get('endpoint')}`"
             )
             md_content.append(f"- **상태 코드**: {result.get('status_code', 'N/A')}")
+            if result.get("expected_status"):
+                md_content.append(
+                    f"- **예상 상태 코드**: {result.get('expected_status')}"
+                )
             md_content.append(f"- **오류**: {result.get('error', 'N/A')}")
             md_content.append(f"- **비고**: {result.get('notes', 'N/A')}")
             md_content.append("")
