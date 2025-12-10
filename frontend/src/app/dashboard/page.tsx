@@ -75,6 +75,13 @@ export default function DashboardPage() {
     retryDelay: 1000, // 1초 간격
   });
 
+  // 에러 발생 시 사용자에게 알림 (모든 hooks를 여기에 배치)
+  useEffect(() => {
+    if (devicesError) {
+      console.error('장비 목록 조회 에러:', devicesError);
+    }
+  }, [devicesError]);
+
   const handleLogout = async () => {
     try {
       const refreshToken = localStorage.getItem('refresh_token');
@@ -109,13 +116,6 @@ export default function DashboardPage() {
   const devices = devicesData?.devices || [];
   const onlineDevices = devices.filter(d => d.is_online).length;
   const offlineDevices = devices.length - onlineDevices;
-
-  // 에러 발생 시 사용자에게 알림
-  useEffect(() => {
-    if (devicesError) {
-      console.error('장비 목록 조회 에러:', devicesError);
-    }
-  }, [devicesError]);
 
   return (
     <div className="min-h-screen bg-gray-50">
