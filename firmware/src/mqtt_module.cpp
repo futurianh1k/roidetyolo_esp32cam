@@ -16,7 +16,6 @@
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 
-
 // 외부 변수
 extern bool cameraActive;
 extern bool microphoneActive;
@@ -121,8 +120,7 @@ void handleCameraControl(const char *action, const char *requestId,
     displayShowStatus("Camera PAUSED", TFT_YELLOW);
     DEBUG_PRINTLN("Camera paused");
   } else if (strcmp(action, "stop") == 0) {
-    cameraStop();
-    cameraClearSink(); // ✨ sink 설정 초기화
+    cameraStop(); // cameraStop() 내부에서 이미 cameraClearSink() 호출함
     cameraActive = false;
     success = true;
     message = "Camera stopped";

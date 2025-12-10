@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { devicesAPI, DeviceCreateRequest } from '@/lib/api';
+import axios from 'axios';
 
 interface RegisterDeviceModalProps {
   isOpen: boolean;
@@ -26,6 +27,16 @@ export default function RegisterDeviceModal({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const cancelTokenSourceRef = useRef<ReturnType<typeof axios.CancelToken.source> | null>(null);
+
+  // 모달이 닫힐 때 진행 중인 요청 취소
+  useEffect(() => {
+    if (!isOpen && cancelTokenSourceRef.current) {
+      cancelTokenSourceRef.current.cancel('사용자가 모달을 닫았습니다');
+      cancelTokenSourceRef.current = null;
+      setIsSubmitting(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -67,6 +78,17 @@ export default function RegisterDeviceModal({
     return Object.keys(newErrors).length === 0;
   };
 
+  // 요청 취소 핸들러
+  const handleCancel = () => {
+    if (cancelTokenSourceRef.current) {
+      cancelTokenSourceRef.current.cancel('사용자가 취소했습니다');
+      cancelTokenSourceRef.current = null;
+      setIsSubmitting(false);
+      toast.info('장비 등록이 취소되었습니다');
+    }
+    onClose();
+  };
+
   // 폼 제출
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +99,14 @@ export default function RegisterDeviceModal({
     }
 
     setIsSubmitting(true);
+
+    // 이전 요청이 있으면 취소
+    if (cancelTokenSourceRef.current) {
+      cancelTokenSourceRef.current.cancel('새로운 요청이 시작되었습니다');
+    }
+
+    // 새로운 CancelToken 생성
+    cancelTokenSourceRef.current = axios.CancelToken.source();
 
     try {
       // API 요청 데이터 준비 (빈 문자열은 undefined로)
@@ -89,7 +119,13 @@ export default function RegisterDeviceModal({
         description: formData.description?.trim() || undefined,
       };
 
-      const { data } = await devicesAPI.create(requestData);
+      // API 요청 (타임아웃 30초, 취소 토큰 포함)
+      const { data } = await devicesAPI.create(requestData, {
+        cancelToken: cancelTokenSourceRef.current.token,
+        timeout: 30000, // 30초 타임아웃
+      });
+
+      cancelTokenSourceRef.current = null;
 
       toast.success(`장비 "${data.device_name}"가 등록되었습니다`);
       
@@ -110,18 +146,33 @@ export default function RegisterDeviceModal({
       // 모달 닫기
       onClose();
     } catch (error: any) {
+      // 취소된 요청은 에러로 처리하지 않음
+      if (axios.isCancel(error)) {
+        console.log('요청이 취소되었습니다:', error.message);
+        return;
+      }
+
       console.error('장비 등록 실패:', error);
       
-      const errorMessage = error.response?.data?.detail || '장비 등록에 실패했습니다';
-      
-      if (errorMessage.includes('이미 등록된')) {
-        toast.error('이미 등록된 장비 ID입니다');
-        setErrors({ device_id: '이미 사용 중인 ID입니다' });
+      // 타임아웃 에러 처리
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        toast.error('요청 시간이 초과되었습니다. 네트워크 연결을 확인해주세요.');
       } else {
-        toast.error(errorMessage);
+        const errorMessage = error.response?.data?.detail || error.message || '장비 등록에 실패했습니다';
+        
+        if (errorMessage.includes('이미 등록된')) {
+          toast.error('이미 등록된 장비 ID입니다');
+          setErrors({ device_id: '이미 사용 중인 ID입니다' });
+        } else if (error.response?.status === 0 || !error.response) {
+          // 네트워크 오류
+          toast.error('서버에 연결할 수 없습니다. 네트워크 연결을 확인해주세요.');
+        } else {
+          toast.error(errorMessage);
+        }
       }
     } finally {
       setIsSubmitting(false);
+      cancelTokenSourceRef.current = null;
     }
   };
 
@@ -142,10 +193,14 @@ export default function RegisterDeviceModal({
     }
   };
 
-  // ESC 키로 닫기
+  // ESC 키로 닫기 (등록 중이면 취소)
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      onClose();
+      if (isSubmitting) {
+        handleCancel();
+      } else {
+        onClose();
+      }
     }
   };
 
@@ -169,9 +224,10 @@ export default function RegisterDeviceModal({
               장비 등록
             </h2>
             <button
-              onClick={onClose}
+              onClick={handleCancel}
               className="text-gray-400 hover:text-gray-600 transition-colors"
               disabled={isSubmitting}
+              title={isSubmitting ? '등록 중... (ESC 키로 취소)' : '닫기 (ESC)'}
             >
               <X className="h-6 w-6" />
             </button>
@@ -310,11 +366,11 @@ export default function RegisterDeviceModal({
             <div className="flex justify-end space-x-3 pt-4">
               <button
                 type="button"
-                onClick={onClose}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                disabled={isSubmitting}
+                onClick={handleCancel}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={false} // 취소 버튼은 항상 활성화
               >
-                취소
+                {isSubmitting ? '취소' : '취소'}
               </button>
               <button
                 type="submit"
@@ -331,6 +387,15 @@ export default function RegisterDeviceModal({
                 )}
               </button>
             </div>
+            
+            {/* 진행 중 안내 */}
+            {isSubmitting && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  ⏳ 장비 등록 중입니다... (ESC 키로 취소 가능)
+                </p>
+              </div>
+            )}
           </form>
         </div>
       </div>

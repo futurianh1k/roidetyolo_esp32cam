@@ -42,6 +42,22 @@ pip install -r requirements.txt
 
 ### 1.2 MySQL 데이터베이스 설정
 
+**Windows (PowerShell):**
+
+```powershell
+# MySQL 접속
+mysql -u root -p
+
+# MySQL 프롬프트에서 실행:
+# CREATE DATABASE cores3_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+# exit;
+
+# 또는 SQL 파일 실행
+Get-Content setup.sql | mysql -u root -p
+```
+
+**Linux/Mac:**
+
 ```bash
 # MySQL 접속
 mysql -u root -p
@@ -76,6 +92,7 @@ python init_db.py
 ```
 
 출력:
+
 ```
 초기 관리자 계정이 생성되었습니다:
   사용자명: admin
@@ -86,12 +103,14 @@ python init_db.py
 ### 1.5 MQTT 브로커 설치 (선택)
 
 **Ubuntu:**
+
 ```bash
 sudo apt install mosquitto mosquitto-clients
 sudo systemctl start mosquitto
 ```
 
 **Windows:**
+
 1. [Mosquitto 다운로드](https://mosquitto.org/download/)
 2. 설치 후 실행
 
@@ -176,6 +195,7 @@ platformio device monitor
 ### 3.4 장비 동작 확인
 
 시리얼 모니터 출력:
+
 ```
 =================================
 Core S3 Management System
@@ -201,6 +221,7 @@ python test_api.py
 ```
 
 출력:
+
 ```
 [1] 헬스 체크 테스트... ✅ 성공
 [2] 사용자 등록 테스트... ✅ 성공
@@ -250,6 +271,7 @@ curl -X POST http://localhost:8000/devices/ \
 ### 4.4 장비 제어 테스트
 
 프론트엔드에서:
+
 1. 장비 카드 클릭
 2. "카메라 시작" 버튼 클릭
 3. Core S3 화면에서 "Camera ON" 메시지 확인
@@ -266,6 +288,7 @@ curl http://localhost:8000/health
 ```
 
 출력:
+
 ```json
 {
   "status": "healthy",
@@ -277,12 +300,14 @@ curl http://localhost:8000/health
 ### 프론트엔드 상태
 
 브라우저 개발자 도구 (F12):
+
 - Console: 에러 메시지 확인
 - Network: API 요청/응답 확인
 
 ### 장비 상태
 
 시리얼 모니터 출력:
+
 ```
 WiFi connected!
 MQTT connected!
@@ -322,6 +347,7 @@ Backend → WebSocket → Frontend
 ### Backend
 
 **MySQL 연결 실패:**
+
 ```bash
 # MySQL 상태 확인
 sudo systemctl status mysql
@@ -331,6 +357,7 @@ sudo systemctl restart mysql
 ```
 
 **MQTT 연결 실패:**
+
 ```bash
 # Mosquitto 상태 확인
 sudo systemctl status mosquitto
@@ -342,6 +369,7 @@ sudo ufw allow 1883
 ### Frontend
 
 **API 연결 실패:**
+
 ```bash
 # 백엔드 실행 여부 확인
 curl http://localhost:8000/health
@@ -351,6 +379,7 @@ cat .env.local
 ```
 
 **npm install 오류:**
+
 ```bash
 # npm 캐시 삭제
 npm cache clean --force
@@ -361,6 +390,7 @@ npm install
 ### Firmware
 
 **Upload 실패:**
+
 ```bash
 # USB 연결 확인
 platformio device list
@@ -370,6 +400,7 @@ platformio device list
 ```
 
 **WiFi 연결 실패:**
+
 - SSID와 비밀번호 확인
 - 2.4GHz WiFi 사용 확인 (5GHz 미지원)
 - 라우터 재시작
@@ -427,8 +458,8 @@ platformio device list
 모든 설정이 완료되었습니다! 이제 Core S3 장비를 원격으로 관리할 수 있습니다.
 
 **다음을 확인해보세요:**
+
 - ✅ 대시보드에서 장비 목록 확인
 - ✅ 실시간 상태 모니터링
 - ✅ 카메라/마이크 원격 제어
 - ✅ 디스플레이 텍스트 표시
-

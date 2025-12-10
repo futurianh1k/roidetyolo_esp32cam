@@ -126,8 +126,8 @@ export const devicesAPI = {
   getById: (id: number) =>
     api.get<Device>(`/devices/${id}`),
   
-  create: (data: DeviceCreateRequest) =>
-    api.post<Device>('/devices/', data),
+  create: (data: DeviceCreateRequest, config?: any) =>
+    api.post<Device>('/devices/', data, config),
   
   delete: (id: number) =>
     api.delete(`/devices/${id}`),

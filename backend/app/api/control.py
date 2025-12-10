@@ -63,10 +63,16 @@ async def control_camera(
     
     # start 액션 시 sink 설정 검증
     if control.action == "start":
+        # sink_url과 stream_mode는 함께 설정되어야 함
         if control.sink_url and not control.stream_mode:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="sink_url이 설정된 경우 stream_mode가 필요합니다"
+            )
+        if control.stream_mode and not control.sink_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="stream_mode가 설정된 경우 sink_url이 필요합니다"
             )
         if control.stream_mode == "mjpeg_stills" and not control.frame_interval:
             raise HTTPException(
