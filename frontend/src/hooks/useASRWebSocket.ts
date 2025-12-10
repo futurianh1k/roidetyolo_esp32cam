@@ -21,6 +21,7 @@ export interface UseASRWebSocketOptions {
   wsUrl: string | null;
   enabled?: boolean;
   onResult?: (result: RecognitionResult) => void;
+  onProcessing?: (isProcessing: boolean) => void;
   onError?: (error: Error) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
@@ -29,6 +30,7 @@ export interface UseASRWebSocketOptions {
 export interface UseASRWebSocketReturn {
   isConnected: boolean;
   isConnecting: boolean;
+  isProcessing: boolean;
   error: Error | null;
   results: RecognitionResult[];
   connect: () => void;
@@ -40,12 +42,14 @@ export function useASRWebSocket({
   wsUrl,
   enabled = true,
   onResult,
+  onProcessing,
   onError,
   onConnect,
   onDisconnect,
 }: UseASRWebSocketOptions): UseASRWebSocketReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [results, setResults] = useState<RecognitionResult[]>([]);
 
@@ -109,11 +113,15 @@ export function useASRWebSocket({
             };
 
             setResults((prev) => [...prev, result]);
+            setIsProcessing(false);
+            onProcessing?.(false);
             onResult?.(result);
           }
           // 처리 중 메시지
           else if (data.type === 'processing') {
             console.log('🔄 음성 처리 중...');
+            setIsProcessing(true);
+            onProcessing?.(true);
           }
           // 연결 확인 메시지
           else if (data.type === 'connected') {
@@ -139,6 +147,7 @@ export function useASRWebSocket({
         console.log('🔌 ASR WebSocket 연결 종료:', event.code, event.reason);
         setIsConnected(false);
         setIsConnecting(false);
+        setIsProcessing(false);
         wsRef.current = null;
         onDisconnect?.();
 
@@ -176,9 +185,7 @@ export function useASRWebSocket({
       setIsConnecting(false);
       onError?.(error);
     }
-  }, [wsUrl, enabled, onResult, onError, onConnect, onDisconnect, isConnecting]);
-
-  /**
+    }, [wsUrl, enabled, onResult, onProcessing, onError, onConnect, onDisconnect, isConnecting]);  /**
    * WebSocket 연결 해제
    */
   const disconnect = useCallback(() => {
@@ -196,6 +203,7 @@ export function useASRWebSocket({
 
     setIsConnected(false);
     setIsConnecting(false);
+    setIsProcessing(false);
     reconnectAttemptsRef.current = 0;
   }, []);
 
@@ -223,6 +231,7 @@ export function useASRWebSocket({
   return {
     isConnected,
     isConnecting,
+    isProcessing,
     error,
     results,
     connect,

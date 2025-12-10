@@ -30,9 +30,27 @@ from datetime import datetime
 from typing import Dict, Optional, List
 from collections import deque
 import numpy as np
+import requests
+
+# ====================
+# 로깅 설정 (최우선)
+# ====================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 # FastAPI 관련
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
+from fastapi import (
+    FastAPI,
+    WebSocket,
+    WebSocketDisconnect,
+    HTTPException,
+    status,
+    Request,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -40,18 +58,18 @@ import uvicorn
 
 # 기존 demo_vad_final.py의 모듈 import
 try:
+    import demo_vad_final
     from demo_vad_final import (
         VADStreamingProcessor,
         load_model,
         matcher,
-        recognizer,
         logger as demo_logger,
         EMERGENCY_API_CONFIG,
         send_emergency_alert,
     )
 
     # 모델 즉시 로드 (서버 시작 전에 초기화)
-    if recognizer is None:
+    if demo_vad_final.recognizer is None:
         logger.info("📦 음성인식 모델 초기 로딩 중...")
         try:
             load_model()
@@ -64,16 +82,6 @@ except ImportError as e:
     print(f"❌ demo_vad_final.py 모듈 import 실패: {e}")
     print("💡 asr_api_server.py와 demo_vad_final.py가 같은 디렉토리에 있어야 합니다.")
     sys.exit(1)
-
-# ====================
-# 로깅 설정
-# ====================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
 
 # ====================
 # FastAPI 앱 생성
@@ -92,6 +100,74 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ====================
+# 설정
+# ====================
+# 백엔드 서버 URL (음성인식 결과 전송)
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+ASR_RESULT_ENDPOINT = f"{BACKEND_URL}/asr/result"
+
+logger.info(f"📡 백엔드 URL: {BACKEND_URL}")
+logger.info(f"📤 결과 전송 엔드포인트: {ASR_RESULT_ENDPOINT}")
+
+# ====================
+# 음성인식 결과 전송 함수
+# ====================
+
+
+async def send_recognition_result_to_backend(
+    device_id: str,
+    session_id: str,
+    text: str,
+    timestamp: str,
+    duration: float,
+    is_emergency: bool = False,
+    emergency_keywords: Optional[List[str]] = None,
+):
+    """
+    음성인식 결과를 백엔드로 전송
+
+    Args:
+        device_id: 장비 ID
+        session_id: 음성인식 세션 ID
+        text: 인식된 텍스트
+        timestamp: 인식 시간
+        duration: 음성 길이 (초)
+        is_emergency: 응급 상황 여부
+        emergency_keywords: 응급 키워드 목록
+    """
+    try:
+        payload = {
+            "device_id": device_id,
+            "session_id": session_id,
+            "text": text,
+            "timestamp": timestamp,
+            "duration": duration,
+            "is_emergency": is_emergency,
+            "emergency_keywords": emergency_keywords or [],
+        }
+
+        # 비동기로 백엔드에 전송 (응답 대기 안 함)
+        def _send():
+            try:
+                response = requests.post(ASR_RESULT_ENDPOINT, json=payload, timeout=5)
+                if response.status_code == 200:
+                    logger.info(f"✅ 결과 전송 완료: {device_id} - '{text[:50]}'")
+                else:
+                    logger.warning(f"⚠️ 백엔드 응답 오류: {response.status_code}")
+            except Exception as e:
+                logger.error(f"❌ 결과 전송 실패: {e}")
+
+        # 스레드에서 실행 (블로킹 안 함)
+        import threading
+
+        thread = threading.Thread(target=_send, daemon=True)
+        thread.start()
+
+    except Exception as e:
+        logger.error(f"❌ 결과 전송 준비 실패: {e}")
+
 
 # ====================
 # 데이터 모델
@@ -163,14 +239,15 @@ class ASRSession:
         self.created_at = datetime.now()
 
         # VAD Processor 생성
-        global recognizer
-        if recognizer is None:
+        if demo_vad_final.recognizer is None:
             raise RuntimeError(
                 "❌ Recognizer가 초기화되지 않았습니다. load_model()을 먼저 실행하세요."
             )
 
         self.processor = VADStreamingProcessor(
-            recognizer=recognizer, sample_rate=sample_rate, vad_enabled=vad_enabled
+            recognizer=demo_vad_final.recognizer,
+            sample_rate=sample_rate,
+            vad_enabled=vad_enabled,
         )
 
         # WebSocket 연결
@@ -299,6 +376,10 @@ class SessionManager:
 # 전역 세션 관리자
 session_manager = SessionManager()
 
+# 서버 호스트/포트 정보 (start_server에서 설정됨)
+_server_host = "localhost"
+_server_port = 8001
+
 # ====================
 # API 엔드포인트
 # ====================
@@ -324,16 +405,15 @@ async def root():
 @app.get("/health")
 async def health_check():
     """헬스 체크"""
-    global recognizer
     return {
         "status": "healthy",
-        "recognizer_loaded": recognizer is not None,
+        "recognizer_loaded": demo_vad_final.recognizer is not None,
         "active_sessions": len(session_manager.sessions),
     }
 
 
 @app.post("/asr/session/start", response_model=SessionStartResponse)
-async def start_session(request: SessionStartRequest):
+async def start_session(request: SessionStartRequest, http_request: Request):
     """
     음성인식 세션 시작
 
@@ -341,8 +421,7 @@ async def start_session(request: SessionStartRequest):
     """
     try:
         # Recognizer 초기화 확인
-        global recognizer
-        if recognizer is None:
+        if demo_vad_final.recognizer is None:
             logger.warning("⚠️ Recognizer가 초기화되지 않았습니다. 모델을 로드합니다...")
             try:
                 load_model()
@@ -365,8 +444,43 @@ async def start_session(request: SessionStartRequest):
         # 세션 시작
         session.start()
 
-        # WebSocket URL 생성
-        ws_url = f"ws://localhost:8001/ws/asr/{session.session_id}"
+        # WebSocket URL 생성 (서버의 실제 호스트 주소 사용)
+        # 1순위: 환경변수 ASR_SERVER_HOST
+        # 2순위: 서버 시작 시 설정된 호스트 (_server_host)
+        # 3순위: HTTP 요청의 호스트 헤더
+        import os
+
+        global _server_host, _server_port
+
+        asr_server_host = os.getenv("ASR_SERVER_HOST", None)
+
+        if asr_server_host:
+            # 환경변수에서 가져온 호스트 사용
+            ws_host = asr_server_host
+            ws_port = os.getenv("ASR_SERVER_PORT", str(_server_port))
+        elif _server_host and _server_host != "0.0.0.0":
+            # 서버 시작 시 설정된 호스트 사용 (0.0.0.0이 아닌 경우)
+            ws_host = _server_host
+            ws_port = str(_server_port)
+        elif http_request:
+            # HTTP 요청의 호스트 헤더에서 추출
+            host_header = http_request.headers.get("host", f"localhost:{_server_port}")
+            # 포트 제거 (있을 경우)
+            if ":" in host_header:
+                parts = host_header.split(":")
+                ws_host = parts[0]
+                ws_port = parts[1] if len(parts) > 1 else str(_server_port)
+            else:
+                ws_host = host_header
+                ws_port = str(_server_port)
+        else:
+            # 기본값: localhost
+            ws_host = "localhost"
+            ws_port = str(_server_port)
+
+        ws_url = f"ws://{ws_host}:{ws_port}/ws/asr/{session.session_id}"
+
+        logger.debug(f"WebSocket URL 생성: {ws_url} (host={ws_host}, port={ws_port})")
 
         return SessionStartResponse(
             session_id=session.session_id,
@@ -581,6 +695,125 @@ async def websocket_asr_endpoint(websocket: WebSocket, session_id: str):
         logger.info(f"🧹 WebSocket 정리 완료: {session_id}")
 
 
+@app.websocket("/ws/audio/{session_id}")
+async def websocket_audio_endpoint(websocket: WebSocket, session_id: str):
+    """
+    ESP32에서 오디오를 스트리밍하는 WebSocket 엔드포인트
+
+    이 엔드포인트는 ESP32 장비에서 마이크 오디오를 PCM 바이너리로 전송받고,
+    음성인식 처리한 후 결과를 백엔드로 전송합니다.
+
+    클라이언트가 보내는 데이터:
+    - 바이너리 PCM 오디오 (16-bit, 16kHz)
+
+    서버 동작:
+    1. 오디오 수신
+    2. 음성인식 처리
+    3. 결과를 백엔드 /asr/result로 전송
+    """
+    # 세션 확인
+    session = session_manager.get_session(session_id)
+
+    if not session:
+        await websocket.close(
+            code=4004, reason=f"세션을 찾을 수 없습니다: {session_id}"
+        )
+        return
+
+    # WebSocket 연결 수락
+    await websocket.accept()
+    session.websocket = websocket
+
+    logger.info(f"🔗 오디오 WebSocket 연결: {session_id} (device: {session.device_id})")
+
+    try:
+        # 연결 확인 메시지
+        await websocket.send_json(
+            {
+                "type": "connected",
+                "session_id": session_id,
+                "message": "오디오 스트리밍 준비 완료. PCM 오디오를 보내세요.",
+            }
+        )
+
+        while True:
+            # 바이너리 오디오 데이터 수신 (16-bit PCM)
+            audio_bytes = await websocket.receive_bytes()
+
+            if not audio_bytes:
+                continue
+
+            logger.debug(f"🎵 오디오 수신: {len(audio_bytes)} bytes")
+
+            # bytes → numpy array (int16 → float32)
+            audio_int16 = np.frombuffer(audio_bytes, dtype=np.int16)
+            audio_float32 = audio_int16.astype(np.float32) / 32768.0
+
+            # 오디오 처리 중 상태 전송
+            try:
+                await websocket.send_json(
+                    {
+                        "type": "processing",
+                        "session_id": session_id,
+                        "message": "음성 처리 중...",
+                    }
+                )
+            except Exception as e:
+                logger.debug(f"처리 중 상태 전송 실패: {e}")
+
+            # 오디오 처리 및 음성인식
+            try:
+                result = await session.process_audio_chunk(audio_float32)
+
+                if result:
+                    # 음성인식 결과를 백엔드로 전송
+                    await send_recognition_result_to_backend(
+                        device_id=session.device_id,
+                        session_id=session_id,
+                        text=result.get("text", ""),
+                        timestamp=result.get("timestamp", datetime.now().isoformat()),
+                        duration=result.get("duration", 0.0),
+                        is_emergency=result.get("is_emergency", False),
+                        emergency_keywords=result.get("emergency_keywords", []),
+                    )
+
+                    # 로컬 WebSocket에도 전송 (선택사항)
+                    await websocket.send_json(
+                        {
+                            "type": "recognition_result",
+                            "session_id": session_id,
+                            "text": result.get("text", ""),
+                            "timestamp": result.get("timestamp", ""),
+                            "duration": result.get("duration", 0.0),
+                            "is_emergency": result.get("is_emergency", False),
+                            "emergency_keywords": result.get("emergency_keywords", []),
+                        }
+                    )
+
+                    logger.info(f"✅ 인식 완료: {result.get('text', '')[:50]}")
+
+            except Exception as e:
+                logger.error(f"❌ 음성인식 처리 오류: {e}", exc_info=True)
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "session_id": session_id,
+                        "message": f"처리 오류: {str(e)}",
+                    }
+                )
+
+    except WebSocketDisconnect:
+        logger.info(f"🔌 오디오 WebSocket 연결 끊김: {session_id}")
+
+    except Exception as e:
+        logger.error(f"❌ 오디오 WebSocket 오류: {e}", exc_info=True)
+
+    finally:
+        # 세션 정리
+        session.websocket = None
+        logger.info(f"🧹 오디오 WebSocket 정리 완료: {session_id}")
+
+
 # ====================
 # 서버 시작 함수
 # ====================
@@ -594,14 +827,19 @@ def start_server(host: str = "0.0.0.0", port: int = 8001):
         host: 호스트 주소
         port: 포트 번호
     """
+    global _server_host, _server_port
+
+    # 전역 변수에 호스트/포트 저장 (WebSocket URL 생성 시 사용)
+    _server_host = host
+    _server_port = port
+
     logger.info("\n" + "=" * 60)
     logger.info("🚀 ASR WebSocket API 서버 시작")
     logger.info("🖥️ Sherpa-ONNX RK3588 NPU 최적화")
     logger.info("=" * 60 + "\n")
 
     # Recognizer 로드 확인 (이미 모듈 로드 시 초기화됨)
-    global recognizer
-    if recognizer is None:
+    if demo_vad_final.recognizer is None:
         logger.warning(
             "⚠️ Recognizer가 초기화되지 않았습니다. 모델을 다시 로드합니다..."
         )
@@ -615,9 +853,21 @@ def start_server(host: str = "0.0.0.0", port: int = 8001):
     else:
         logger.info("✅ Recognizer가 이미 초기화되어 있습니다.")
 
+    # WebSocket URL에 사용할 호스트 주소 결정
+    # 환경변수가 있으면 사용, 없으면 서버 호스트 사용
+    import os
+
+    ws_host = os.getenv("ASR_SERVER_HOST", host if host != "0.0.0.0" else "localhost")
+    ws_port = os.getenv("ASR_SERVER_PORT", str(port))
+
     logger.info(f"\n🌐 서버 주소: http://{host}:{port}")
-    logger.info(f"📡 WebSocket: ws://{host}:{port}/ws/asr/{{session_id}}")
+    logger.info(f"📡 ASR WebSocket: ws://{ws_host}:{ws_port}/ws/asr/{{session_id}}")
+    logger.info(
+        f"🎤 오디오 WebSocket (ESP32): ws://{ws_host}:{ws_port}/ws/audio/{{session_id}}"
+    )
     logger.info(f"📚 API 문서: http://{host}:{port}/docs")
+    if os.getenv("ASR_SERVER_HOST"):
+        logger.info(f"💡 WebSocket 호스트: {ws_host} (환경변수 ASR_SERVER_HOST 사용)")
     logger.info("=" * 60 + "\n")
 
     # Uvicorn 서버 실행

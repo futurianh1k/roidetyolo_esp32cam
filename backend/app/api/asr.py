@@ -7,6 +7,7 @@ ASR API 라우터
 - 장비의 음성인식 세션 시작/종료
 - 세션 상태 조회
 - MQTT로 CoreS3 장비에 명령 전송
+- ASR 서버에서 음성인식 결과 수신 및 클라이언트에 브로드캐스트
 """
 
 import logging
@@ -24,9 +25,11 @@ from app.schemas.asr import (
     ASRSessionStopResponse,
     ASRSessionStatusResponse,
     ASRSessionStatus,
+    RecognitionResult,
 )
 from app.services.asr_service import asr_service
 from app.services.mqtt_service import mqtt_service
+from app.services.websocket_service import ws_manager
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/asr", tags=["ASR (음성인식)"])
@@ -424,3 +427,108 @@ async def asr_health_check():
     except Exception as e:
         logger.error(f"❌ ASR 서버 헬스 체크 실패: {e}")
         return {"status": "unhealthy", "error": str(e)}
+
+
+@router.post("/result")
+async def receive_asr_result(
+    result: RecognitionResult,
+    db: Session = Depends(get_db),
+):
+    """
+    ASR 서버로부터 음성인식 결과 수신
+
+    RK3588 ASR 서버에서 음성인식이 완료되면 이 엔드포인트로 결과를 전송합니다.
+    결과를 받으면 해당 장비를 구독 중인 모든 클라이언트에게 브로드캐스트합니다.
+
+    Args:
+        result: 음성인식 결과 데이터
+            - device_id: 장비 ID
+            - session_id: 세션 ID
+            - text: 인식된 텍스트
+            - timestamp: 인식 시각
+            - duration: 음성 길이
+            - is_emergency: 응급 상황 여부
+            - emergency_keywords: 감지된 응급 키워드
+        db: 데이터베이스 세션
+
+    Returns:
+        {
+            "status": "success",
+            "message": "음성인식 결과가 저장되었습니다",
+            "broadcasted_to_users": [...],
+            "timestamp": "2025-12-08T10:30:45.123456"
+        }
+
+    Example:
+        POST /asr/result
+        {
+            "device_id": 1,
+            "device_name": "CoreS3-01",
+            "session_id": "550e8400-e29b-41d4-a716-446655440000",
+            "text": "안녕하세요",
+            "timestamp": "2025-12-08 10:30:45",
+            "duration": 2.3,
+            "is_emergency": false,
+            "emergency_keywords": []
+        }
+    """
+    logger.info(
+        f"🎤 음성인식 결과 수신: device_id={result.device_id}, text='{result.text}'"
+    )
+
+    try:
+        # 1. 장비 확인
+        device = db.query(Device).filter(Device.id == result.device_id).first()
+        if not device:
+            logger.warning(f"⚠️ 장비를 찾을 수 없음: {result.device_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="장비를 찾을 수 없습니다"
+            )
+
+        # 2. 응급 상황 감지
+        if result.is_emergency:
+            logger.warning(
+                f"🚨 응급 상황 감지: device_id={result.device_id}, keywords={result.emergency_keywords}"
+            )
+
+        # 3. WebSocket으로 구독 중인 클라이언트들에게 브로드캐스트
+        message = {
+            "type": "asr_result",
+            "device_id": result.device_id,
+            "device_name": result.device_name,
+            "session_id": result.session_id,
+            "text": result.text,
+            "timestamp": result.timestamp,
+            "duration": result.duration,
+            "is_emergency": result.is_emergency,
+            "emergency_keywords": result.emergency_keywords,
+        }
+
+        # 장비를 구독 중인 모든 사용자에게 브로드캐스트
+        await ws_manager.broadcast_to_subscribers(result.device_id, message)
+
+        logger.info(
+            f"✅ 음성인식 결과 브로드캐스트 완료: {result.device_id} -> {len(ws_manager.device_subscriptions.get(result.device_id, set()))} 사용자"
+        )
+
+        # 4. 응답 반환
+        return {
+            "status": "success",
+            "message": "음성인식 결과가 저장되었습니다",
+            "device_id": result.device_id,
+            "text": result.text,
+            "is_emergency": result.is_emergency,
+            "broadcasted_count": len(
+                ws_manager.device_subscriptions.get(result.device_id, set())
+            ),
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(f"❌ 음성인식 결과 처리 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"음성인식 결과 처리에 실패했습니다: {str(e)}",
+        )

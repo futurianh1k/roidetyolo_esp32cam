@@ -22,11 +22,13 @@ import { Mic, MicOff, Loader2, Wifi, WifiOff, AlertCircle } from 'lucide-react';
 interface VoiceRecognitionPanelProps {
   device: Device;
   onResult?: (result: any) => void;
+  onProcessing?: (isProcessing: boolean) => void;
 }
 
 export default function VoiceRecognitionPanel({
   device,
   onResult,
+  onProcessing,
 }: VoiceRecognitionPanelProps) {
   const queryClient = useQueryClient();
   const [language, setLanguage] = useState<string>('ko');
@@ -89,11 +91,14 @@ export default function VoiceRecognitionPanel({
   });
 
   // WebSocket 연결 (세션이 활성화되어 있을 때만)
-  const { isConnected, isConnecting, error: wsError } = useASRWebSocket({
+  const { isConnected, isConnecting, isProcessing, error: wsError } = useASRWebSocket({
     wsUrl: wsUrl,
     enabled: (sessionStatus?.has_active_session || false) && !!wsUrl,
     onResult: (result) => {
       onResult?.(result);
+    },
+    onProcessing: (processing) => {
+      onProcessing?.(processing);
     },
     onError: (error) => {
       toast.error(`WebSocket 오류: ${error.message}`);

@@ -40,6 +40,7 @@ export default function DeviceDetailPage() {
   const [isRestarting, setIsRestarting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [recognitionResults, setRecognitionResults] = useState<RecognitionResult[]>([]);
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);
   const [isEditingIP, setIsEditingIP] = useState(false);
   const [ipAddress, setIpAddress] = useState('');
   const [isUpdatingIP, setIsUpdatingIP] = useState(false);
@@ -399,7 +400,7 @@ export default function DeviceDetailPage() {
         </div>
 
         {/* Voice Recognition Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
           {/* Voice Recognition Panel */}
           <VoiceRecognitionPanel
             device={device}
@@ -416,6 +417,18 @@ export default function DeviceDetailPage() {
                 await controlAPI.display(device.id, 'show_text', displayText);
               } catch (error) {
                 console.error('디스플레이 업데이트 실패:', error);
+              }
+            }}
+            onProcessing={async (isProcessing) => {
+              setIsProcessingAudio(isProcessing);
+              
+              // 📱 음성 처리 중 상태를 장비 디스플레이에 표시
+              if (isProcessing) {
+                try {
+                  await controlAPI.display(device.id, 'show_text', '🎤 음성인식 중...');
+                } catch (error) {
+                  console.error('디스플레이 업데이트 실패:', error);
+                }
               }
             }}
           />
