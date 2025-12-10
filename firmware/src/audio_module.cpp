@@ -31,10 +31,6 @@ static uint8_t currentVolume = 70; // 기본 볼륨 70%
 static bool asrMode = false;           // ASR 모드 활성 여부
 static unsigned long asrStartTime = 0; // ASR 시작 시각
 
-// 오디오 재생 Task 관련
-static TaskHandle_t audioPlayTaskHandle = NULL;
-static char audioPlayURL_buffer[256] = {0}; // URL 버퍼 (Task에서 사용)
-
 /**
  * 오디오 초기화
  */
@@ -155,73 +151,48 @@ void audioStopMicrophone() {
 }
 
 /**
- * 오디오 재생 Task (FreeRTOS)
- * 
- * 별도 Task로 실행하여 메인 루프 블로킹 방지
- * MQTT keepalive와 WiFi 유지 보장
+ * URL에서 오디오 재생
  */
-void audioPlayTask(void *parameter) {
-  const char *url = (const char *)parameter;
-  
-  DEBUG_PRINTF("🔊 Audio Task 시작: %s\n", url);
+bool audioPlayURL(const char *url) {
+  if (!audioInitialized) {
+    DEBUG_PRINTLN("Audio not initialized");
+    return false;
+  }
+
+  DEBUG_PRINTF("Playing audio from URL: %s\n", url);
 
   HTTPClient http;
   http.begin(url);
-  http.setTimeout(30000); // 30초 타임아웃
-  http.setReuse(false);   // 연결 재사용 비활성화
 
   int httpCode = http.GET();
 
   if (httpCode != HTTP_CODE_OK) {
-    DEBUG_PRINTF("❌ HTTP GET 실패, error: %d\n", httpCode);
+    DEBUG_PRINTF("HTTP GET failed, error: %d\n", httpCode);
     http.end();
-    speakerPlaying = false;
-    audioPlayTaskHandle = NULL;
-    vTaskDelete(NULL);
-    return;
+    return false;
   }
 
   // 스트림 가져오기
   WiFiClient *stream = http.getStreamPtr();
 
+  // Null 체크 (안전성 확보)
   if (!stream) {
-    DEBUG_PRINTLN("❌ 스트림 포인터 획득 실패");
+    DEBUG_PRINTLN("Failed to get stream pointer");
     http.end();
-    speakerPlaying = false;
-    audioPlayTaskHandle = NULL;
-    vTaskDelete(NULL);
-    return;
+    return false;
   }
+
+  speakerPlaying = true;
 
   // 버퍼
   const size_t bufferSize = 1024;
-  uint8_t *buffer = (uint8_t *)malloc(bufferSize);
-  
-  if (!buffer) {
-    DEBUG_PRINTLN("❌ 버퍼 메모리 할당 실패");
-    http.end();
-    speakerPlaying = false;
-    audioPlayTaskHandle = NULL;
-    vTaskDelete(NULL);
-    return;
-  }
+  uint8_t buffer[bufferSize];
 
   // I2S 쓰기 시작
   i2s_start(I2S_PORT_OUT);
 
-  DEBUG_PRINTLN("🎵 스트리밍 시작...");
-
-  unsigned long lastProgressReport = millis();
-  unsigned long totalBytesPlayed = 0;
-
   // 스트리밍 재생
   while (http.connected() && speakerPlaying) {
-    // WiFi 연결 체크
-    if (WiFi.status() != WL_CONNECTED) {
-      DEBUG_PRINTLN("⚠️ WiFi 연결 끊김, 재생 중단");
-      break;
-    }
-
     size_t available = stream->available();
 
     if (available) {
@@ -229,7 +200,7 @@ void audioPlayTask(void *parameter) {
       size_t bytesRead = stream->readBytes(buffer, bytesToRead);
 
       if (bytesRead > 0) {
-        // 볼륨 조절
+        // 볼륨 조절 (간단한 방법: 샘플값 조정)
         if (currentVolume < 100) {
           for (size_t i = 0; i < bytesRead; i += 2) {
             int16_t *sample = (int16_t *)&buffer[i];
@@ -237,86 +208,21 @@ void audioPlayTask(void *parameter) {
           }
         }
 
-        // I2S 쓰기 (타임아웃 설정)
         size_t bytesWritten;
-        esp_err_t result = i2s_write(I2S_PORT_OUT, buffer, bytesRead, 
-                                      &bytesWritten, pdMS_TO_TICKS(1000));
-        
-        if (result != ESP_OK) {
-          DEBUG_PRINTF("⚠️ I2S write 실패: %d\n", result);
-        }
-
-        totalBytesPlayed += bytesWritten;
+        i2s_write(I2S_PORT_OUT, buffer, bytesRead, &bytesWritten,
+                  portMAX_DELAY);
       }
     }
 
-    // 진행 상황 출력 (5초마다)
-    if (millis() - lastProgressReport > 5000) {
-      DEBUG_PRINTF("🎵 재생 중... (%lu KB)\n", totalBytesPlayed / 1024);
-      lastProgressReport = millis();
-    }
-
-    // Task 양보 (다른 Task들이 실행될 수 있도록)
-    vTaskDelay(pdMS_TO_TICKS(1));
+    delay(1);
   }
 
-  // 정리
-  free(buffer);
   i2s_stop(I2S_PORT_OUT);
   http.end();
 
   speakerPlaying = false;
-  audioPlayTaskHandle = NULL;
+  DEBUG_PRINTLN("Audio playback finished");
 
-  DEBUG_PRINTLN("✅ 오디오 재생 완료");
-  
-  // Task 자가 삭제
-  vTaskDelete(NULL);
-}
-
-/**
- * URL에서 오디오 재생
- * 
- * FreeRTOS Task로 실행하여 비블로킹 방식으로 재생
- */
-bool audioPlayURL(const char *url) {
-  if (!audioInitialized) {
-    DEBUG_PRINTLN("❌ Audio not initialized");
-    return false;
-  }
-
-  // 이미 재생 중이면 중단
-  if (speakerPlaying && audioPlayTaskHandle != NULL) {
-    DEBUG_PRINTLN("⚠️ 이미 오디오 재생 중, 기존 재생 중단");
-    audioStopSpeaker();
-    // Task 종료 대기
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
-
-  // URL 복사 (Task에서 사용)
-  strncpy(audioPlayURL_buffer, url, sizeof(audioPlayURL_buffer) - 1);
-  audioPlayURL_buffer[sizeof(audioPlayURL_buffer) - 1] = '\0';
-
-  speakerPlaying = true;
-
-  // Task 생성 (Core 0에서 실행, 우선순위 1)
-  BaseType_t result = xTaskCreatePinnedToCore(
-      audioPlayTask,          // Task 함수
-      "AudioPlayTask",        // Task 이름
-      8192,                   // 스택 크기 (8KB)
-      (void *)audioPlayURL_buffer, // 파라미터
-      1,                      // 우선순위
-      &audioPlayTaskHandle,   // Task 핸들
-      0                       // Core 0
-  );
-
-  if (result != pdPASS) {
-    DEBUG_PRINTLN("❌ Audio Task 생성 실패");
-    speakerPlaying = false;
-    return false;
-  }
-
-  DEBUG_PRINTLN("✅ Audio Task 생성 성공");
   return true;
 }
 
@@ -335,26 +241,8 @@ void audioSetVolume(uint8_t volume) {
  */
 void audioStopSpeaker() {
   speakerPlaying = false;
-  
-  // Task가 실행 중이면 종료 대기
-  if (audioPlayTaskHandle != NULL) {
-    DEBUG_PRINTLN("🛑 Audio Task 종료 대기 중...");
-    
-    unsigned long startWait = millis();
-    while (audioPlayTaskHandle != NULL && (millis() - startWait) < 3000) {
-      vTaskDelay(pdMS_TO_TICKS(100));
-    }
-    
-    // 여전히 종료 안되면 강제 종료
-    if (audioPlayTaskHandle != NULL) {
-      DEBUG_PRINTLN("⚠️ Audio Task 강제 종료");
-      vTaskDelete(audioPlayTaskHandle);
-      audioPlayTaskHandle = NULL;
-    }
-  }
-  
   i2s_stop(I2S_PORT_OUT);
-  DEBUG_PRINTLN("✅ Speaker stopped");
+  DEBUG_PRINTLN("Speaker stopped");
 }
 
 /**

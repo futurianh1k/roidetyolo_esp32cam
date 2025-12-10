@@ -16,11 +16,6 @@ void cameraPause();
 void cameraStop();
 void cameraLoop();
 
-// RTSP 서버 제어
-bool rtspServerStart();
-void rtspServerStop();
-void rtspServerLoop();
-
 // 카메라 상태
 bool isCameraActive();
 
