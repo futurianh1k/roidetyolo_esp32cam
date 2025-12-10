@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     CORS_ORIGINS: str = "http://localhost:3000"
+    # 장비가 접근할 수 있는 백엔드 서버 주소 (장비와 같은 네트워크)
+    BACKEND_HOST: str = "localhost"  # 예: "192.168.1.100" 또는 "localhost"
+    BACKEND_PORT: int = 8000
     
     # Security
     SECRET_KEY: str  # 필수 - .env에서 로드

@@ -135,9 +135,9 @@ class AudioService:
             filename: 파일명
         
         Returns:
-            str: 파일 URL
+            str: 파일 URL (상대 경로)
         """
-        return f"/api/audio/{filename}"
+        return f"/audio/{filename}"
     
     def list_audio_files(self) -> list[dict]:
         """

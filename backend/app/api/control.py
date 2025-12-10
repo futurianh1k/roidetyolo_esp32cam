@@ -233,8 +233,21 @@ async def control_speaker(
         audio_url = control.audio_url
         if control.audio_file and not audio_url:
             from app.services import get_audio_service
+            from app.config import settings
             audio_service = get_audio_service()
-            audio_url = audio_service.get_audio_url(control.audio_file)
+            
+            # 상대 경로를 절대 URL로 변환
+            # 장비가 접근할 수 있는 URL 생성
+            relative_url = audio_service.get_audio_url(control.audio_file)
+            
+            # 백엔드 서버의 호스트 주소 사용 (설정에서 가져옴)
+            backend_host = settings.BACKEND_HOST or "localhost"
+            backend_port = settings.BACKEND_PORT or 8000
+            
+            # 장비가 접근할 수 있는 절대 URL 생성
+            audio_url = f"http://{backend_host}:{backend_port}{relative_url}"
+            
+            logger.info(f"오디오 파일 URL 생성: {audio_url} (파일: {control.audio_file})")
         
         # MQTT 명령 전송
         mqtt = get_mqtt_service()
