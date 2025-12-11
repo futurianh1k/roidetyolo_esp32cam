@@ -12,6 +12,155 @@
 
 
 static M5GFX *display = nullptr;
+static constexpr size_t STATUS_HISTORY_SIZE = 4;
+static constexpr int STATUS_BAR_HEIGHT = 38;
+static constexpr int STATUS_HISTORY_SECTION_HEIGHT = 24;
+
+static String statusHistory[STATUS_HISTORY_SIZE];
+static uint32_t statusColorHistory[STATUS_HISTORY_SIZE];
+static uint32_t statusTimestampHistory[STATUS_HISTORY_SIZE];
+static size_t statusHistoryCount = 0;
+static bool hasLastStatus = false;
+static String lastStatusValue;
+static uint32_t lastStatusColor = 0;
+
+void setUtf8Font();
+
+/**
+ * 상태 변경 시각을 사람이 읽을 수 있는 형태로 변환
+ */
+static String formatStatusAge(uint32_t eventMillis) {
+  const uint32_t now = millis();
+  const uint32_t elapsedSeconds =
+      (now >= eventMillis) ? (now - eventMillis) / 1000 : 0;
+
+  if (elapsedSeconds < 60) {
+    return String(elapsedSeconds) + "s ago";
+  }
+
+  if (elapsedSeconds < 3600) {
+    return String(elapsedSeconds / 60) + "m ago";
+  }
+
+  return String(elapsedSeconds / 3600) + "h ago";
+}
+
+/**
+ * 상태 히스토리를 갱신
+ */
+static void updateStatusHistory(const String &text, uint32_t color) {
+  const uint32_t now = millis();
+
+  if (hasLastStatus && lastStatusValue == text &&
+      lastStatusColor == color && statusHistoryCount > 0) {
+    statusTimestampHistory[0] = now;
+  } else {
+    const size_t lastIndex =
+        (statusHistoryCount >= STATUS_HISTORY_SIZE) ? STATUS_HISTORY_SIZE - 1
+                                                    : statusHistoryCount;
+
+    for (size_t i = lastIndex; i > 0; --i) {
+      statusHistory[i] = statusHistory[i - 1];
+      statusColorHistory[i] = statusColorHistory[i - 1];
+      statusTimestampHistory[i] = statusTimestampHistory[i - 1];
+    }
+
+    statusHistory[0] = text;
+    statusColorHistory[0] = color;
+    statusTimestampHistory[0] = now;
+
+    if (statusHistoryCount < STATUS_HISTORY_SIZE) {
+      statusHistoryCount++;
+    }
+  }
+
+  lastStatusValue = text;
+  lastStatusColor = color;
+  hasLastStatus = true;
+}
+
+/**
+ * 상태 오버레이 렌더링
+ */
+static void renderStatusOverlay() {
+  if (!display || statusHistoryCount == 0)
+    return;
+
+  setUtf8Font();
+
+  const uint32_t activeColor = statusColorHistory[0];
+  const int iconCenterX = 18;
+  const int iconRadius = 12;
+  const int textStartX = 40;
+
+  // 최상단 상태 바
+  display->fillRect(0, 0, SCREEN_WIDTH, STATUS_BAR_HEIGHT, activeColor);
+  display->fillCircle(iconCenterX, STATUS_BAR_HEIGHT / 2, iconRadius,
+                      TFT_WHITE);
+  display->fillCircle(iconCenterX, STATUS_BAR_HEIGHT / 2, iconRadius - 3,
+                      activeColor);
+  display->drawCircle(iconCenterX, STATUS_BAR_HEIGHT / 2, iconRadius,
+                      TFT_WHITE);
+
+  display->setTextDatum(middle_left);
+  display->setTextSize(2);
+  display->setTextColor(TFT_WHITE, activeColor);
+  display->drawString(statusHistory[0], textStartX, STATUS_BAR_HEIGHT / 2);
+
+  display->setTextSize(1);
+  display->setTextDatum(middle_right);
+  display->drawString(formatStatusAge(statusTimestampHistory[0]),
+                      SCREEN_WIDTH - 6, STATUS_BAR_HEIGHT / 2);
+
+  if (statusHistoryCount <= 1)
+    return;
+
+  // 최근 기록 영역
+  display->fillRect(0, STATUS_BAR_HEIGHT, SCREEN_WIDTH,
+                    STATUS_HISTORY_SECTION_HEIGHT, BG_COLOR);
+  display->setTextDatum(top_left);
+  display->setTextColor(TEXT_COLOR, BG_COLOR);
+  display->setTextSize(1);
+
+  const size_t limit = (statusHistoryCount > STATUS_HISTORY_SIZE)
+                           ? STATUS_HISTORY_SIZE
+                           : statusHistoryCount;
+
+  int lineY = STATUS_BAR_HEIGHT + 4;
+  for (size_t i = 1; i < limit; ++i) {
+    display->fillCircle(10, lineY + 4, 3, statusColorHistory[i]);
+    String historyLine =
+        formatStatusAge(statusTimestampHistory[i]) + " - " + statusHistory[i];
+    display->drawString(historyLine, 18, lineY);
+    lineY += 14;
+
+    if (lineY >= STATUS_BAR_HEIGHT + STATUS_HISTORY_SECTION_HEIGHT - 6) {
+      break;
+    }
+  }
+}
+
+/**
+ * UTF-8 폰트 설정
+ * M5GFX의 내장 UTF-8 폰트 사용 (한글/일본어 지원)
+ *
+ * 참고: M5GFX는 fonts 네임스페이스에 폰트를 제공합니다.
+ * 한국어: &fonts::efontKR_16, &fonts::efontKR_24
+ * 일본어: &fonts::lgfxJapanMincho_16, &fonts::lgfxJapanGothic_16 등
+ *
+ * M5GFX v0.1.14 이상에서는 efontKR 폰트가 기본적으로 포함되어 있습니다.
+ */
+void setUtf8Font() {
+  if (!display)
+    return;
+
+  // M5GFX 내장 UTF-8 폰트 사용
+  // 한국어 폰트 사용 (일본어도 일부 지원)
+  // efontKR_16은 한국어를 지원하는 16px 폰트
+  // M5GFX v0.1.14 이상에서는 이 폰트가 기본적으로 포함됨
+  display->setFont(&fonts::efontKR_16);
+  DEBUG_PRINTLN("UTF-8 font set (Korean/Japanese support)");
+}
 
 /**
  * 디스플레이 초기화
@@ -23,6 +172,9 @@ void displayInit() {
   display->setRotation(1); // 가로 모드
   display->setBrightness(128);
   display->setColorDepth(16);
+
+  // UTF-8 폰트 설정 (한글/일본어 지원)
+  setUtf8Font();
 
   displayClear();
 
@@ -44,12 +196,16 @@ void displayClear() {
 
 /**
  * 텍스트 표시
+ * UTF-8 폰트를 사용하여 한글/일본어 텍스트를 올바르게 표시합니다.
  */
 void displayShowText(const char *text) {
   if (!display)
     return;
 
   displayClear();
+
+  // UTF-8 폰트 설정 (한글/일본어 지원)
+  setUtf8Font();
 
   display->setTextSize(TEXT_SIZE);
   display->setTextColor(TEXT_COLOR, BG_COLOR);
@@ -172,29 +328,36 @@ void displayShowEmoji(const char *emojiId) {
 
 /**
  * 상태 메시지 표시
+ * UTF-8 폰트를 사용하여 한글/일본어 상태 메시지를 올바르게 표시합니다.
  */
 void displayShowStatus(const char *status, uint32_t color) {
   if (!display)
     return;
 
-  // 상단에 상태 바 표시
-  display->fillRect(0, 0, SCREEN_WIDTH, 30, color);
-  display->setTextSize(2);
-  display->setTextColor(TFT_WHITE, color);
-  display->setTextDatum(middle_center);
-  display->drawString(status, SCREEN_WIDTH / 2, 15);
+  String statusText = String(status ? status : "");
+  statusText.trim();
+  if (statusText.isEmpty()) {
+    statusText = "Status";
+  }
 
-  DEBUG_PRINTF("Status: %s\n", status);
+  updateStatusHistory(statusText, color);
+  renderStatusOverlay();
+
+  DEBUG_PRINTF("Status: %s\n", statusText.c_str());
 }
 
 /**
  * 시스템 정보 표시
+ * UTF-8 폰트를 사용하여 한글/일본어 시스템 정보를 올바르게 표시합니다.
  */
 void displayShowSystemInfo() {
   if (!display)
     return;
 
   displayClear();
+
+  // UTF-8 폰트 설정 (한글/일본어 지원)
+  setUtf8Font();
 
   display->setTextSize(1);
   display->setTextColor(TEXT_COLOR, BG_COLOR);
