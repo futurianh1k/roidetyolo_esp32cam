@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import DeviceControl from '@/components/DeviceControl';
 import DeviceStatus from '@/components/DeviceStatus';
+import VideoPlayer from '@/components/VideoPlayer';
 import VoiceRecognitionPanel from '@/components/VoiceRecognitionPanel';
 import RecognitionChatWindow from '@/components/RecognitionChatWindow';
 import { RecognitionResult } from '@/lib/api';
@@ -390,6 +391,17 @@ export default function DeviceDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Video Stream Section */}
+        {device.ip_address && (
+          <div className="mb-6">
+            <VideoPlayer
+              streamUrl={device.ip_address}
+              deviceName={device.device_name}
+              isOnline={device.is_online}
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Device Status */}
