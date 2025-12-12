@@ -8,41 +8,49 @@
 
 #define TAG "CameraService"
 
+/**
+ * M5Stack CoreS3 Camera Configuration
+ * Reference: esp-bsp/m5stack_core_s3/include/bsp/m5stack_core_s3.h
+ *
+ * Camera: GC0308 (0.3MP)
+ * - Does NOT support JPEG! Use RGB565 or GRAYSCALE
+ * - XCLK is not connected (camera uses internal clock)
+ * - I2C controlled via port 1 (GPIO11/12)
+ */
 static camera_config_t camera_config = {
     .pin_pwdn = GPIO_NUM_NC,
     .pin_reset = GPIO_NUM_NC,
-    .pin_xclk = GPIO_NUM_NC,     // Not connected! Camera uses internal clock
+    .pin_xclk = GPIO_NUM_NC,     // Not connected!
     .pin_sscb_sda = GPIO_NUM_NC, // Use I2C port instead
-    .pin_sscb_scl = GPIO_NUM_NC, // Use I2C port instead
+    .pin_sccb_scl = GPIO_NUM_NC, // Use I2C port instead
 
-    .pin_d7 = (gpio_num_t)Y9_GPIO_NUM,
-    .pin_d6 = (gpio_num_t)Y8_GPIO_NUM,
-    .pin_d5 = (gpio_num_t)Y7_GPIO_NUM,
-    .pin_d4 = (gpio_num_t)Y6_GPIO_NUM,
-    .pin_d3 = (gpio_num_t)Y5_GPIO_NUM,
-    .pin_d2 = (gpio_num_t)Y4_GPIO_NUM,
-    .pin_d1 = (gpio_num_t)Y3_GPIO_NUM,
-    .pin_d0 = (gpio_num_t)Y2_GPIO_NUM,
-    .pin_vsync = (gpio_num_t)VSYNC_GPIO_NUM,
-    .pin_href = (gpio_num_t)HREF_GPIO_NUM,
-    .pin_pclk = (gpio_num_t)PCLK_GPIO_NUM,
+    // Data pins - from official BSP
+    .pin_d7 = GPIO_NUM_47,    // BSP_CAMERA_D7
+    .pin_d6 = GPIO_NUM_48,    // BSP_CAMERA_D6
+    .pin_d5 = GPIO_NUM_16,    // BSP_CAMERA_D5
+    .pin_d4 = GPIO_NUM_15,    // BSP_CAMERA_D4
+    .pin_d3 = GPIO_NUM_42,    // BSP_CAMERA_D3
+    .pin_d2 = GPIO_NUM_41,    // BSP_CAMERA_D2
+    .pin_d1 = GPIO_NUM_40,    // BSP_CAMERA_D1
+    .pin_d0 = GPIO_NUM_39,    // BSP_CAMERA_D0
+    .pin_vsync = GPIO_NUM_46, // BSP_CAMERA_VSYNC
+    .pin_href = GPIO_NUM_38,  // BSP_CAMERA_HSYNC
+    .pin_pclk = GPIO_NUM_45,  // BSP_CAMERA_PCLK
 
-    // GC0308 camera settings for M5Stack CoreS3
-    // Reference:
-    // https://github.com/espressif/esp-bsp/tree/master/bsp/m5stack_core_s3
-    .xclk_freq_hz = 10000000, // 10MHz (official BSP value)
+    // GC0308 camera settings - from official BSP
+    .xclk_freq_hz = 10000000, // 10MHz
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
 
-    // GC0308 supports JPEG format
-    .pixel_format = PIXFORMAT_JPEG,
-    .frame_size = CAMERA_FRAMESIZE, // From config.h (VGA 640x480)
-    .jpeg_quality = CAMERA_QUALITY,
-    .fb_count = 2, // Double buffering (official BSP recommendation)
+    // GC0308 does NOT support JPEG! Use RGB565
+    .pixel_format = PIXFORMAT_RGB565,
+    .frame_size = FRAMESIZE_QVGA, // 320x240 (matching display)
+    .jpeg_quality = 12,
+    .fb_count = 2,
     .fb_location = CAMERA_FB_IN_PSRAM,
     .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
 
-    // Use I2C port 1 (GPIO11/12) - Critical for M5Stack CoreS3!
+    // I2C port 1 (GPIO11=SCL, GPIO12=SDA)
     .sccb_i2c_port = 1,
 };
 

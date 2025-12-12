@@ -70,19 +70,12 @@ void Application::Initialize() {
         xEventGroupSetBits(event_group_, MAIN_EVENT_STATE_CHANGED);
       });
 
-  // Initialize audio
-  audio_codec_ = new AudioCodec();
-  if (audio_codec_->Initialize()) {
-    audio_service_ = new AudioService();
-    if (audio_service_->Initialize(audio_codec_)) {
-      audio_service_->Start();
-      ESP_LOGI(TAG, "Audio service initialized");
-    }
-  }
-
-  // Initialize I2C for camera (MUST be before camera init!)
+  // ==========================================================
+  // STEP 1: Initialize I2C FIRST (required by audio codecs and camera)
   // M5Stack CoreS3: I2C_NUM_1, GPIO11=SCL, GPIO12=SDA
   // Reference: esp-bsp/m5stack_core_s3/m5stack_core_s3.c
+  // ==========================================================
+  ESP_LOGI(TAG, "STEP 1: Initializing I2C...");
   static i2c_master_bus_handle_t i2c_bus_handle = NULL;
   const i2c_master_bus_config_t i2c_bus_config = {
       .i2c_port = I2C_NUM_1,
@@ -98,17 +91,40 @@ void Application::Initialize() {
 
   esp_err_t i2c_ret = i2c_new_master_bus(&i2c_bus_config, &i2c_bus_handle);
   if (i2c_ret == ESP_OK) {
-    ESP_LOGI(TAG, "I2C master bus initialized for camera");
+    ESP_LOGI(TAG, "I2C master bus initialized");
   } else {
-    ESP_LOGW(TAG, "I2C init failed: %s (may be already initialized)",
+    ESP_LOGW(TAG, "I2C init: %s (may be already initialized)",
              esp_err_to_name(i2c_ret));
   }
 
-  // Initialize camera
+  // ==========================================================
+  // STEP 2: Initialize Audio (I2S)
+  // ==========================================================
+  ESP_LOGI(TAG, "STEP 2: Initializing Audio...");
+  audio_codec_ = new AudioCodec();
+  if (audio_codec_->Initialize()) {
+    ESP_LOGI(TAG, "Audio codec initialized, creating service...");
+    audio_service_ = new AudioService();
+    if (audio_service_->Initialize(audio_codec_)) {
+      audio_service_->Start();
+      ESP_LOGI(TAG, "Audio service initialized");
+    } else {
+      ESP_LOGW(TAG, "Audio service init failed");
+    }
+  } else {
+    ESP_LOGW(TAG, "Audio codec initialization failed, continuing...");
+  }
+
+  // ==========================================================
+  // STEP 3: Initialize Camera (requires I2C to be ready)
+  // ==========================================================
+  ESP_LOGI(TAG, "STEP 3: Initializing Camera...");
   camera_service_ = new CameraService();
   if (camera_service_->Initialize()) {
     camera_service_->Start();
     ESP_LOGI(TAG, "Camera service initialized");
+  } else {
+    ESP_LOGW(TAG, "Camera initialization failed, continuing...");
   }
 
   // Initialize WiFi

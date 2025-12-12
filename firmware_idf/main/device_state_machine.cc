@@ -10,26 +10,38 @@ DeviceStateMachine::DeviceStateMachine() {
 }
 
 bool DeviceStateMachine::TransitionTo(DeviceState new_state) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  DeviceState old_state;
+  bool should_notify = false;
 
-  DeviceState old_state = current_state_.load();
+  // Critical section - lock only for state manipulation
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
 
-  if (old_state == new_state) {
-    // Already in target state
-    return true;
-  }
+    old_state = current_state_.load();
 
-  if (!IsValidTransition(old_state, new_state)) {
-    ESP_LOGW(TAG, "Invalid state transition: %s -> %s", GetStateName(old_state),
+    if (old_state == new_state) {
+      // Already in target state
+      return true;
+    }
+
+    if (!IsValidTransition(old_state, new_state)) {
+      ESP_LOGW(TAG, "Invalid state transition: %s -> %s",
+               GetStateName(old_state), GetStateName(new_state));
+      return false;
+    }
+
+    ESP_LOGI(TAG, "State transition: %s -> %s", GetStateName(old_state),
              GetStateName(new_state));
-    return false;
+
+    current_state_.store(new_state);
+    should_notify = true;
   }
+  // Lock released here
 
-  ESP_LOGI(TAG, "State transition: %s -> %s", GetStateName(old_state),
-           GetStateName(new_state));
-
-  current_state_.store(new_state);
-  NotifyStateChange(old_state, new_state);
+  // Notify listeners AFTER releasing the lock to prevent deadlock
+  if (should_notify) {
+    NotifyStateChange(old_state, new_state);
+  }
 
   return true;
 }
