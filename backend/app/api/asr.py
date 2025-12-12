@@ -12,12 +12,15 @@ ASR API 라우터
 
 import logging
 import json
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
-from typing import Dict
+from sqlalchemy import func, Integer
+from typing import Dict, Optional, List
+from datetime import datetime, timedelta
 
 from app.database import get_db
 from app.models.device import Device
+from app.models.asr_result import ASRResult
 from app.schemas.asr import (
     ASRSessionStartRequest,
     ASRSessionStartResponse,
@@ -27,6 +30,19 @@ from app.schemas.asr import (
     ASRSessionStatus,
     RecognitionResult,
 )
+from app.schemas.asr_result import (
+    ASRResultResponse,
+    ASRResultListResponse,
+    ASRResultSearchRequest,
+    ASRResultStatsResponse,
+)
+from app.schemas.emergency_alert import (
+    EmergencyAlertResponse,
+    EmergencyAlertListResponse,
+    EmergencyAlertSearchRequest,
+    EmergencyAlertStatsResponse,
+)
+from app.models.emergency_alert import AlertPriority, AlertStatus
 from app.services.asr_service import asr_service
 from app.services.mqtt_service import mqtt_service
 from app.services.websocket_service import ws_manager
@@ -485,13 +501,63 @@ async def receive_asr_result(
                 status_code=status.HTTP_404_NOT_FOUND, detail="장비를 찾을 수 없습니다"
             )
 
-        # 2. 응급 상황 감지
+        # 2. 응급 상황 감지 및 알림 이력 저장
         if result.is_emergency:
             logger.warning(
                 f"🚨 응급 상황 감지: device_id={result.device_id}, keywords={result.emergency_keywords}"
             )
+            
+            # 응급 상황 알림 이력 생성 (전송 전)
+            try:
+                from app.services.emergency_alert_service import create_emergency_alert
+                alert = create_emergency_alert(
+                    db=db,
+                    device_id=result.device_id,
+                    recognized_text=result.text,
+                    emergency_keywords=result.emergency_keywords,
+                    asr_result_id=None,  # 아직 저장 전이므로 나중에 업데이트
+                    sent=False,
+                )
+                logger.info(f"📝 응급 상황 알림 이력 생성: alert_id={alert.id}")
+            except Exception as e:
+                logger.error(f"❌ 응급 상황 알림 이력 생성 실패: {e}", exc_info=True)
 
-        # 3. WebSocket으로 구독 중인 클라이언트들에게 브로드캐스트
+        # 3. 데이터베이스에 결과 저장
+        emergency_keywords_json = json.dumps(result.emergency_keywords, ensure_ascii=False) if result.emergency_keywords else None
+        
+        asr_result = ASRResult(
+            device_id=result.device_id,
+            session_id=result.session_id,
+            text=result.text,
+            timestamp=result.timestamp,
+            duration=result.duration,
+            is_emergency=result.is_emergency,
+            emergency_keywords=emergency_keywords_json,
+        )
+        db.add(asr_result)
+        db.commit()
+        db.refresh(asr_result)
+        
+        logger.info(f"💾 ASR 결과 저장 완료: id={asr_result.id}, device_id={result.device_id}")
+        
+        # 응급 상황인 경우 알림 이력의 asr_result_id 업데이트
+        if result.is_emergency:
+            try:
+                from app.models.emergency_alert import EmergencyAlert
+                alert = db.query(EmergencyAlert).filter(
+                    EmergencyAlert.device_id == result.device_id,
+                    EmergencyAlert.asr_result_id.is_(None),
+                    EmergencyAlert.recognized_text == result.text,
+                ).order_by(EmergencyAlert.created_at.desc()).first()
+                
+                if alert:
+                    alert.asr_result_id = asr_result.id
+                    db.commit()
+                    logger.info(f"✅ 알림 이력에 ASR 결과 ID 연결: alert_id={alert.id}, asr_result_id={asr_result.id}")
+            except Exception as e:
+                logger.error(f"❌ 알림 이력 업데이트 실패: {e}", exc_info=True)
+
+        # 4. WebSocket으로 구독 중인 클라이언트들에게 브로드캐스트
         message = {
             "type": "asr_result",
             "device_id": result.device_id,
@@ -511,7 +577,7 @@ async def receive_asr_result(
             f"✅ 음성인식 결과 브로드캐스트 완료: {result.device_id} -> {len(ws_manager.device_subscriptions.get(result.device_id, set()))} 사용자"
         )
 
-        # 4. 응답 반환
+        # 5. 응답 반환
         return {
             "status": "success",
             "message": "음성인식 결과가 저장되었습니다",
@@ -531,4 +597,281 @@ async def receive_asr_result(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"음성인식 결과 처리에 실패했습니다: {str(e)}",
+        )
+
+
+@router.get("/results", response_model=ASRResultListResponse)
+async def get_asr_results(
+    device_id: Optional[int] = Query(None, description="장비 ID 필터"),
+    session_id: Optional[str] = Query(None, description="세션 ID 필터"),
+    is_emergency: Optional[bool] = Query(None, description="응급 상황 필터"),
+    text_query: Optional[str] = Query(None, description="텍스트 검색"),
+    start_date: Optional[str] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
+    page: int = Query(1, ge=1, description="페이지 번호"),
+    page_size: int = Query(20, ge=1, le=100, description="페이지 크기"),
+    db: Session = Depends(get_db),
+):
+    """
+    ASR 결과 조회 (검색 및 필터링 지원)
+    
+    Args:
+        device_id: 장비 ID로 필터링
+        session_id: 세션 ID로 필터링
+        is_emergency: 응급 상황 여부로 필터링
+        text_query: 텍스트 검색 (부분 일치)
+        start_date: 시작 날짜 (YYYY-MM-DD)
+        end_date: 종료 날짜 (YYYY-MM-DD)
+        page: 페이지 번호
+        page_size: 페이지 크기
+    
+    Returns:
+        ASR 결과 목록
+    """
+    try:
+        # 쿼리 빌드
+        query = db.query(ASRResult, Device.device_name).join(Device, ASRResult.device_id == Device.id)
+        
+        # 필터 적용
+        if device_id:
+            query = query.filter(ASRResult.device_id == device_id)
+        
+        if session_id:
+            query = query.filter(ASRResult.session_id == session_id)
+        
+        if is_emergency is not None:
+            query = query.filter(ASRResult.is_emergency == is_emergency)
+        
+        if text_query:
+            query = query.filter(ASRResult.text.contains(text_query))
+        
+        if start_date:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                query = query.filter(ASRResult.created_at >= start_dt)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="시작 날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식을 사용하세요."
+                )
+        
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+                query = query.filter(ASRResult.created_at < end_dt)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="종료 날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식을 사용하세요."
+                )
+        
+        # 총 개수
+        total = query.count()
+        
+        # 정렬 및 페이지네이션
+        results = query.order_by(ASRResult.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+        
+        # 응답 형식 변환
+        result_list = []
+        for asr_result, device_name in results:
+            emergency_keywords = []
+            if asr_result.emergency_keywords:
+                try:
+                    emergency_keywords = json.loads(asr_result.emergency_keywords)
+                except (json.JSONDecodeError, TypeError):
+                    emergency_keywords = []
+            
+            result_list.append(ASRResultResponse(
+                id=asr_result.id,
+                device_id=asr_result.device_id,
+                device_name=device_name,
+                session_id=asr_result.session_id,
+                text=asr_result.text,
+                timestamp=asr_result.timestamp,
+                duration=asr_result.duration,
+                is_emergency=asr_result.is_emergency,
+                emergency_keywords=emergency_keywords,
+                created_at=asr_result.created_at,
+            ))
+        
+        return ASRResultListResponse(
+            total=total,
+            page=page,
+            page_size=page_size,
+            results=result_list,
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ ASR 결과 조회 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ASR 결과 조회에 실패했습니다: {str(e)}",
+        )
+
+
+@router.get("/results/stats", response_model=ASRResultStatsResponse)
+async def get_asr_stats(
+    device_id: Optional[int] = Query(None, description="장비 ID 필터"),
+    start_date: Optional[str] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+):
+    """
+    ASR 결과 통계 조회
+    
+    Args:
+        device_id: 장비 ID로 필터링
+        start_date: 시작 날짜 (YYYY-MM-DD)
+        end_date: 종료 날짜 (YYYY-MM-DD)
+    
+    Returns:
+        ASR 결과 통계
+    """
+    try:
+        # 쿼리 빌드
+        query = db.query(ASRResult)
+        
+        # 필터 적용
+        if device_id:
+            query = query.filter(ASRResult.device_id == device_id)
+        
+        if start_date:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                query = query.filter(ASRResult.created_at >= start_dt)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="시작 날짜 형식이 올바르지 않습니다."
+                )
+        
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+                query = query.filter(ASRResult.created_at < end_dt)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="종료 날짜 형식이 올바르지 않습니다."
+                )
+        
+        # 통계 계산
+        total_count = query.count()
+        emergency_count = query.filter(ASRResult.is_emergency == True).count()
+        
+        duration_stats = db.query(
+            func.sum(ASRResult.duration).label('total_duration'),
+            func.avg(ASRResult.duration).label('avg_duration')
+        ).filter(ASRResult.id.in_([r.id for r in query.all()])).first()
+        
+        total_duration = duration_stats.total_duration or 0.0
+        average_duration = duration_stats.avg_duration or 0.0
+        
+        # 장비별 통계
+        device_stats_query = db.query(
+            ASRResult.device_id,
+            Device.device_name,
+            func.count(ASRResult.id).label('count'),
+            func.sum(ASRResult.duration).label('total_duration'),
+            func.sum(func.cast(ASRResult.is_emergency, Integer)).label('emergency_count')
+        ).join(Device, ASRResult.device_id == Device.id)
+        
+        if device_id:
+            device_stats_query = device_stats_query.filter(ASRResult.device_id == device_id)
+        
+        if start_date:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            device_stats_query = device_stats_query.filter(ASRResult.created_at >= start_dt)
+        
+        if end_date:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            device_stats_query = device_stats_query.filter(ASRResult.created_at < end_dt)
+        
+        device_stats = device_stats_query.group_by(ASRResult.device_id, Device.device_name).all()
+        
+        device_stats_list = [
+            {
+                "device_id": stat.device_id,
+                "device_name": stat.device_name,
+                "count": stat.count,
+                "total_duration": float(stat.total_duration or 0.0),
+                "emergency_count": stat.emergency_count or 0,
+            }
+            for stat in device_stats
+        ]
+        
+        return ASRResultStatsResponse(
+            total_count=total_count,
+            emergency_count=emergency_count,
+            total_duration=float(total_duration),
+            average_duration=float(average_duration),
+            device_stats=device_stats_list,
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ ASR 통계 조회 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ASR 통계 조회에 실패했습니다: {str(e)}",
+        )
+
+
+@router.get("/results/{result_id}", response_model=ASRResultResponse)
+async def get_asr_result(
+    result_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    특정 ASR 결과 조회
+    
+    Args:
+        result_id: ASR 결과 ID
+    
+    Returns:
+        ASR 결과 상세 정보
+    """
+    try:
+        result = db.query(ASRResult, Device.device_name).join(
+            Device, ASRResult.device_id == Device.id
+        ).filter(ASRResult.id == result_id).first()
+        
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"ASR 결과를 찾을 수 없습니다: {result_id}"
+            )
+        
+        asr_result, device_name = result
+        
+        emergency_keywords = []
+        if asr_result.emergency_keywords:
+            try:
+                emergency_keywords = json.loads(asr_result.emergency_keywords)
+            except (json.JSONDecodeError, TypeError):
+                emergency_keywords = []
+        
+        return ASRResultResponse(
+            id=asr_result.id,
+            device_id=asr_result.device_id,
+            device_name=device_name,
+            session_id=asr_result.session_id,
+            text=asr_result.text,
+            timestamp=asr_result.timestamp,
+            duration=asr_result.duration,
+            is_emergency=asr_result.is_emergency,
+            emergency_keywords=emergency_keywords,
+            created_at=asr_result.created_at,
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ ASR 결과 조회 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ASR 결과 조회에 실패했습니다: {str(e)}",
         )

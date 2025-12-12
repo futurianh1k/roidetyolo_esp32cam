@@ -285,5 +285,116 @@ export const asrAPI = {
   
   healthCheck: () =>
     api.get<{ status: string; asr_server?: any; error?: string }>('/asr/health'),
+  
+  // ASR 결과 조회
+  getResults: (params?: {
+    device_id?: number;
+    session_id?: string;
+    is_emergency?: boolean;
+    text_query?: string;
+    start_date?: string;
+    end_date?: string;
+    page?: number;
+    page_size?: number;
+  }) =>
+    api.get<{
+      total: number;
+      page: number;
+      page_size: number;
+      results: Array<{
+        id: number;
+        device_id: number;
+        device_name: string;
+        session_id: string;
+        text: string;
+        timestamp: string;
+        duration: number;
+        is_emergency: boolean;
+        emergency_keywords: string[];
+        created_at: string;
+      }>;
+    }>('/asr/results', { params }),
+  
+  getResultStats: (params?: {
+    device_id?: number;
+    start_date?: string;
+    end_date?: string;
+  }) =>
+    api.get<{
+      total_count: number;
+      emergency_count: number;
+      total_duration: number;
+      average_duration: number;
+      device_stats: Array<{
+        device_id: number;
+        device_name: string;
+        count: number;
+        total_duration: number;
+        emergency_count: number;
+      }>;
+    }>('/asr/results/stats', { params }),
+  
+  // 응급 상황 알림 조회
+  getEmergencyAlerts: (params?: {
+    device_id?: number;
+    priority?: 'low' | 'medium' | 'high' | 'critical';
+    status?: 'pending' | 'sent' | 'failed' | 'acknowledged';
+    start_date?: string;
+    end_date?: string;
+    page?: number;
+    page_size?: number;
+  }) =>
+    api.get<{
+      total: number;
+      page: number;
+      page_size: number;
+      alerts: Array<{
+        id: number;
+        device_id: number;
+        device_name: string;
+        asr_result_id: number | null;
+        recognized_text: string;
+        emergency_keywords: string[];
+        priority: string;
+        status: string;
+        api_endpoint: string | null;
+        api_response: string | null;
+        sent_at: string | null;
+        created_at: string;
+        acknowledged_at: string | null;
+        acknowledged_by: number | null;
+        acknowledged_by_username: string | null;
+      }>;
+    }>('/asr/emergency-alerts', { params }),
+  
+  getEmergencyAlertStats: (params?: {
+    device_id?: number;
+    start_date?: string;
+    end_date?: string;
+  }) =>
+    api.get<{
+      total_count: number;
+      by_priority: Record<string, number>;
+      by_status: Record<string, number>;
+      by_device: Array<{
+        device_id: number;
+        device_name: string;
+        count: number;
+      }>;
+      recent_alerts: Array<{
+        id: number;
+        device_id: number;
+        priority: string;
+        status: string;
+        created_at: string;
+      }>;
+    }>('/asr/emergency-alerts/stats', { params }),
+  
+  acknowledgeAlert: (alertId: number) =>
+    api.post<{
+      status: string;
+      message: string;
+      alert_id: number;
+    }>(`/asr/emergency-alerts/${alertId}/acknowledge`),
 };
 

@@ -35,6 +35,7 @@ class User(Base):
     # Relationships
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user")
+    acknowledged_alerts = relationship("EmergencyAlert", back_populates="acknowledged_user", foreign_keys="EmergencyAlert.acknowledged_by")
     
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', role='{self.role}')>"

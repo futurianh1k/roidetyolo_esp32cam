@@ -6,6 +6,8 @@ from app.models.refresh_token import RefreshToken
 from app.models.device import Device
 from app.models.device_status import DeviceStatus, ComponentStatus
 from app.models.audit_log import AuditLog
+from app.models.asr_result import ASRResult
+from app.models.emergency_alert import EmergencyAlert, AlertPriority, AlertStatus
 
 __all__ = [
     "User",
@@ -15,5 +17,9 @@ __all__ = [
     "DeviceStatus",
     "ComponentStatus",
     "AuditLog",
+    "ASRResult",
+    "EmergencyAlert",
+    "AlertPriority",
+    "AlertStatus",
 ]
 

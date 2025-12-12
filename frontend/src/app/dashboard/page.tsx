@@ -18,6 +18,8 @@ import {
 import DeviceCard from '@/components/DeviceCard';
 import DashboardStats from '@/components/DashboardStats';
 import RegisterDeviceModal from '@/components/RegisterDeviceModal';
+import ASRStatsChart from '@/components/ASRStatsChart';
+import EmergencyAlertHistory from '@/components/EmergencyAlertHistory';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -166,6 +168,12 @@ export default function DashboardPage() {
           onlineDevices={onlineDevices}
           offlineDevices={offlineDevices}
         />
+
+        {/* ASR Statistics and Emergency Alerts */}
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ASRStatsChart />
+          <EmergencyAlertHistory limit={5} />
+        </div>
 
         {/* Devices Section */}
         <div className="mt-8">

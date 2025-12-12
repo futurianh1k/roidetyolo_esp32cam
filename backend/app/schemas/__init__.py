@@ -41,6 +41,12 @@ from app.schemas.asr import (
     ASRSessionStatusResponse,
     RecognitionResult,
 )
+from app.schemas.asr_result import (
+    ASRResultResponse,
+    ASRResultListResponse,
+    ASRResultSearchRequest,
+    ASRResultStatsResponse,
+)
 
 __all__ = [
     # User schemas
@@ -78,4 +84,9 @@ __all__ = [
     "ASRSessionStatus",
     "ASRSessionStatusResponse",
     "RecognitionResult",
+    # ASR Result schemas
+    "ASRResultResponse",
+    "ASRResultListResponse",
+    "ASRResultSearchRequest",
+    "ASRResultStatsResponse",
 ]

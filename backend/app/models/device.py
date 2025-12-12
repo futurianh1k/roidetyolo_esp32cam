@@ -28,6 +28,8 @@ class Device(Base):
     # Relationships
     status_records = relationship("DeviceStatus", back_populates="device", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="device")
+    asr_results = relationship("ASRResult", back_populates="device", cascade="all, delete-orphan")
+    emergency_alerts = relationship("EmergencyAlert", back_populates="device", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Device(id={self.id}, device_id='{self.device_id}', name='{self.device_name}')>"
