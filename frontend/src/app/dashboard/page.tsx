@@ -14,10 +14,12 @@ import {
   WifiOff,
   ChevronRight,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import DeviceCard from '@/components/DeviceCard';
 import DashboardStats from '@/components/DashboardStats';
 import RegisterDeviceModal from '@/components/RegisterDeviceModal';
+import DeleteDeviceModal from '@/components/DeleteDeviceModal';
 import ASRStatsChart from '@/components/ASRStatsChart';
 import EmergencyAlertHistory from '@/components/EmergencyAlertHistory';
 
@@ -26,6 +28,7 @@ export default function DashboardPage() {
   const { user, isAuthenticated, clearAuth } = useAuthStore();
   const [mounted, setMounted] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // 클라이언트 사이드에서만 실행
   useEffect(() => {
@@ -142,6 +145,14 @@ export default function DashboardPage() {
                 장비 등록
               </button>
               <button
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                disabled={devices.length === 0}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                장비 삭제
+              </button>
+              <button
                 onClick={handleRefresh}
                 className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               >
@@ -150,7 +161,7 @@ export default function DashboardPage() {
               </button>
               <button
                 onClick={handleLogout}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 로그아웃
@@ -228,6 +239,16 @@ export default function DashboardPage() {
           refetch(); // 장비 목록 새로고침
           toast.success('장비가 성공적으로 등록되었습니다');
         }}
+      />
+
+      {/* 장비 삭제 모달 */}
+      <DeleteDeviceModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onSuccess={() => {
+          refetch(); // 장비 목록 새로고침
+        }}
+        devices={devices}
       />
     </div>
   );
