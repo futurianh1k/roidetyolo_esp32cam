@@ -1,0 +1,11 @@
+# Single App Build Configuration (No OTA)
+# Use: idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.singleapp" build
+
+# IMPORTANT: Use custom partition table (not default single app!)
+# CONFIG_PARTITION_TABLE_SINGLE_APP is not set
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_singleapp.csv"
+
+# Disable OTA features
+# CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is not set
+# CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK is not set

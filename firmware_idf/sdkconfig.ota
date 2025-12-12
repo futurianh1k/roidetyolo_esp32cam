@@ -1,0 +1,10 @@
+# OTA Build Configuration
+# Use: idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ota" build
+
+# OTA partition table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_custom.csv"
+
+# OTA features
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK=n

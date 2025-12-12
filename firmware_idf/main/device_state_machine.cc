@@ -94,6 +94,11 @@ bool DeviceStateMachine::IsValidTransition(DeviceState from,
     return true;
   }
 
+  // Allow initial transitions from Unknown
+  if (from == kDeviceStateUnknown) {
+    return to == kDeviceStateStarting || to == kDeviceStateIdle;
+  }
+
   // Starting can transition to Idle or Connecting
   if (from == kDeviceStateStarting) {
     return to == kDeviceStateIdle || to == kDeviceStateConnecting;

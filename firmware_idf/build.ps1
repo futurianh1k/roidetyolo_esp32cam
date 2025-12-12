@@ -1,10 +1,15 @@
 # ESP-IDF Build Script
-# Usage: .\build.ps1
+# Usage: 
+#   .\build.ps1                    # Build OTA version (default)
+#   .\build.ps1 -BuildType ota     # Build OTA version
+#   .\build.ps1 -BuildType single  # Build Single App version (no OTA)
 
 param(
     [string]$IdfPath = "",
     [string]$Target = "esp32s3",
     [string]$Port = "",
+    [ValidateSet("ota", "single")]
+    [string]$BuildType = "ota",
     [switch]$Flash = $false,
     [switch]$Monitor = $false,
     [switch]$Clean = $false
@@ -13,6 +18,15 @@ param(
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "ESP-IDF Build Script" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Display build type
+if ($BuildType -eq "ota") {
+    Write-Host "[BUILD TYPE] OTA Version (Dual partition, 4MB each)" -ForegroundColor Green
+}
+else {
+    Write-Host "[BUILD TYPE] Single App Version (6MB app partition, no OTA)" -ForegroundColor Yellow
+}
 Write-Host ""
 
 # ESP-IDF 경로 찾기
@@ -171,11 +185,25 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# sdkconfig 설정 (빌드 타입에 따라)
+Write-Host ""
+Write-Host "[5] Configuring build type..." -ForegroundColor Yellow
+if ($BuildType -eq "ota") {
+    Write-Host "    - Using: sdkconfig.defaults + sdkconfig.ota" -ForegroundColor Cyan
+    Write-Host "    - Partition: partitions_custom.csv (OTA 2x4MB)" -ForegroundColor Cyan
+    $env:SDKCONFIG_DEFAULTS = "sdkconfig.defaults;sdkconfig.ota"
+}
+else {
+    Write-Host "    - Using: sdkconfig.defaults + sdkconfig.singleapp" -ForegroundColor Cyan
+    Write-Host "    - Partition: partitions_singleapp.csv (6MB app)" -ForegroundColor Cyan
+    $env:SDKCONFIG_DEFAULTS = "sdkconfig.defaults;sdkconfig.singleapp"
+}
+
 # 빌드
 Write-Host ""
-Write-Host "[5] Building..." -ForegroundColor Yellow
+Write-Host "[6] Building..." -ForegroundColor Yellow
 Write-Host "   (This may take several minutes)" -ForegroundColor Gray
-idf.py build
+idf.py -D SDKCONFIG_DEFAULTS="$env:SDKCONFIG_DEFAULTS" build
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
