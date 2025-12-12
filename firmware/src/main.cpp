@@ -72,7 +72,9 @@ void setup() {
   // WiFi 연결
   setupWiFi();
 
-  // 카메라 초기화
+  // 카메라 초기화 (WiFi 연결 후 충분한 지연 시간 제공)
+  // M5Stack Core S3의 경우 하드웨어 안정화 시간 필요
+  delay(500);
   DEBUG_PRINTLN("Initializing camera...");
   if (cameraInit()) {
     DEBUG_PRINTLN("Camera initialized successfully");
@@ -80,8 +82,10 @@ void setup() {
     delay(500);
   } else {
     DEBUG_PRINTLN("Camera initialization failed!");
+    DEBUG_PRINTLN("⚠️ Camera will not be available, but system will continue.");
     displayShowStatus("Camera Failed", TFT_RED);
     delay(2000);
+    // 카메라 실패해도 시스템은 계속 동작
   }
 
   // 오디오 초기화

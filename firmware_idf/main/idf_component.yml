@@ -1,0 +1,17 @@
+## IDF Component Manager Manifest File
+## Core S3 Management System Dependencies
+
+dependencies:
+  # MQTT client
+  espressif/mqtt: ^1.1.0
+  
+  # JSON parsing
+  json: ^1.0.0
+  
+  # ESP Camera (if available as component)
+  # Note: esp_camera is usually part of ESP-IDF, but check if component is needed
+  
+  # Required IDF version
+  idf:
+    version: '>=5.4.0'
+

@@ -27,5 +27,6 @@
     "editor.codeActionsOnSave": {
       "source.organizeImports": "explicit"
 }
-  }
+  },
+  "idf.pythonInstallPath": "e:\\esp32\\Espressif\\tools\\idf-python\\3.11.2\\python.exe"
 }

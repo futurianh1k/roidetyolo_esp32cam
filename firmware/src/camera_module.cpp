@@ -13,6 +13,7 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFiClient.h>
+#include <Wire.h>  // I2C 버스 제어용
 
 
 // 카메라 설정
@@ -41,9 +42,9 @@ static camera_config_t camera_config = {.pin_pwdn = PWDN_GPIO_NUM,
                                         .pixel_format = PIXFORMAT_JPEG,
                                         .frame_size = CAMERA_FRAMESIZE,
                                         .jpeg_quality = CAMERA_QUALITY,
-                                        .fb_count = 2,
+                                        .fb_count = 1,  // M5Stack Core S3는 1개 프레임 버퍼 권장
                                         .fb_location = CAMERA_FB_IN_PSRAM,
-                                        .grab_mode = CAMERA_GRAB_LATEST};
+                                        .grab_mode = CAMERA_GRAB_WHEN_EMPTY};  // 최신 프레임 대신 빈 버퍼일 때만 캡처
 
 static bool cameraInitialized = false;
 static bool cameraStreamActive = false;
@@ -70,10 +71,59 @@ bool cameraInit() {
 
   DEBUG_PRINTLN("Initializing camera...");
 
-  // 카메라 초기화
-  esp_err_t err = esp_camera_init(&camera_config);
+  // I2C 버스 정리 (M5Stack Core S3의 경우 M5.begin()이 이미 I2C를 초기화했을 수 있음)
+  // 카메라 초기화 전에 I2C 버스를 정리하여 충돌 방지
+  Wire.end();  // 기존 I2C 연결 종료
+  delay(100);  // I2C 버스 안정화 대기
+  Wire.begin();  // I2C 버스 재시작
+  delay(100);
+
+  // 카메라 핀 설정 확인 및 로그
+  DEBUG_PRINTF("Camera pins: XCLK=%d, SIOD=%d, SIOC=%d\n", 
+               XCLK_GPIO_NUM, SIOD_GPIO_NUM, SIOC_GPIO_NUM);
+  DEBUG_PRINTF("Camera pins: PWDN=%d, RESET=%d\n", 
+               PWDN_GPIO_NUM, RESET_GPIO_NUM);
+
+  // 카메라 초기화 전 지연 (하드웨어 안정화)
+  delay(200);
+
+  // 카메라 초기화 (최대 3회 재시도)
+  esp_err_t err = ESP_FAIL;
+  int retryCount = 0;
+  const int maxRetries = 3;
+
+  while (err != ESP_OK && retryCount < maxRetries) {
+    if (retryCount > 0) {
+      DEBUG_PRINTF("Camera init retry %d/%d...\n", retryCount, maxRetries - 1);
+      delay(500);  // 재시도 전 대기
+    }
+
+    err = esp_camera_init(&camera_config);
+    
+    if (err != ESP_OK) {
+      DEBUG_PRINTF("Camera init failed with error 0x%x\n", err);
+      
+      // 상세 에러 정보 출력
+      // ESP32-Camera 에러 코드는 ESP_ERR_CAMERA_BASE + 오프셋 형태
+      if (err == ESP_ERR_CAMERA_NOT_DETECTED) {
+        DEBUG_PRINTLN("ERROR: Camera not detected. Check connections.");
+      } else if (err == ESP_ERR_NO_MEM) {
+        DEBUG_PRINTLN("ERROR: Not enough memory. Check PSRAM settings.");
+      } else if (err == ESP_FAIL) {
+        DEBUG_PRINTLN("ERROR: Camera initialization failed. Check I2C pins and connections.");
+      } else if (err >= ESP_ERR_CAMERA_BASE && err < ESP_ERR_CAMERA_BASE + 10) {
+        DEBUG_PRINTF("ERROR: Camera error (base + %d): 0x%x. Check hardware connections.\n", 
+                     err - ESP_ERR_CAMERA_BASE, err);
+      } else {
+        DEBUG_PRINTF("ERROR: Unknown camera error: 0x%x\n", err);
+      }
+      
+      retryCount++;
+    }
+  }
+
   if (err != ESP_OK) {
-    DEBUG_PRINTF("Camera init failed with error 0x%x\n", err);
+    DEBUG_PRINTLN("Camera initialization failed after all retries!");
     return false;
   }
 

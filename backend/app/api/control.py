@@ -250,15 +250,88 @@ async def control_speaker(
             # 장비가 접근할 수 있는 URL 생성
             relative_url = audio_service.get_audio_url(control.audio_file)
 
-            # 백엔드 서버의 호스트 주소 사용 (설정에서 가져옴)
-            backend_host = settings.BACKEND_HOST or "localhost"
+            # 백엔드 서버의 호스트 주소 결정
+            # 1. 설정 파일의 BACKEND_HOST 사용 (우선)
+            # 2. localhost인 경우 자동 감지 시도
+            backend_host = settings.BACKEND_HOST
+            
+            # localhost인 경우 자동으로 실제 IP 주소 찾기
+            if backend_host in ["localhost", "127.0.0.1"]:
+                detected_host = None
+                
+                # 방법 1: Request의 Host 헤더 사용 (프론트엔드에서 접근한 주소)
+                if request:
+                    host_header = request.headers.get("Host", "")
+                    if host_header and host_header not in ["localhost", "127.0.0.1"]:
+                        # 포트 제거
+                        detected_host = host_header.split(":")[0]
+                        # IP 주소 형식인지 확인
+                        import re
+                        if re.match(r'^\d+\.\d+\.\d+\.\d+$', detected_host):
+                            backend_host = detected_host
+                            logger.info(f"✅ Host 헤더에서 백엔드 IP 자동 감지: {backend_host}")
+                
+                # 방법 2: 장비 IP와 같은 서브넷의 백엔드 IP 추론
+                if backend_host in ["localhost", "127.0.0.1"] and device.ip_address:
+                    # 장비 IP의 서브넷에서 백엔드 IP 추론
+                    # 예: 장비가 10.10.11.18이면 백엔드는 10.10.11.x (같은 서브넷)
+                    ip_parts = device.ip_address.rsplit(".", 1)
+                    if len(ip_parts) == 2:
+                        # 네트워크 인터페이스에서 실제 IP 찾기
+                        import socket
+                        try:
+                            # 장비와 통신 가능한 네트워크 인터페이스의 IP 찾기
+                            # 같은 서브넷의 IP 주소 사용
+                            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                            try:
+                                # 장비 IP로 연결 시도하여 사용할 네트워크 인터페이스 확인
+                                s.connect((device.ip_address, 80))
+                                local_ip = s.getsockname()[0]
+                                s.close()
+                                
+                                # 같은 서브넷인지 확인
+                                local_parts = local_ip.rsplit(".", 1)
+                                if len(local_parts) == 2 and local_parts[0] == ip_parts[0]:
+                                    backend_host = local_ip
+                                    logger.info(
+                                        f"✅ 네트워크 인터페이스에서 백엔드 IP 자동 감지: {backend_host} "
+                                        f"(장비 IP: {device.ip_address})"
+                                    )
+                                else:
+                                    # 다른 서브넷이면 장비 IP의 서브넷 사용
+                                    backend_host = ip_parts[0] + ".1"
+                                    logger.warning(
+                                        f"⚠️ 다른 서브넷 감지. 장비 IP({device.ip_address}) 기반으로 "
+                                        f"{backend_host} 사용. .env 파일에 BACKEND_HOST를 설정하세요."
+                                    )
+                            except:
+                                s.close()
+                                # 연결 실패 시 장비 IP의 서브넷 사용
+                                backend_host = ip_parts[0] + ".1"
+                                logger.warning(
+                                    f"⚠️ BACKEND_HOST가 localhost입니다. "
+                                    f"장비 IP({device.ip_address}) 기반으로 {backend_host} 사용. "
+                                    f".env 파일에 BACKEND_HOST를 설정하세요."
+                                )
+                        except Exception as e:
+                            logger.warning(f"⚠️ IP 자동 감지 실패: {e}. .env 파일에 BACKEND_HOST를 설정하세요.")
+                
+                # 여전히 localhost인 경우 경고
+                if backend_host in ["localhost", "127.0.0.1"]:
+                    logger.error(
+                        f"❌ BACKEND_HOST가 localhost입니다. ESP32 장비가 접근할 수 없습니다. "
+                        f".env 파일에 BACKEND_HOST를 실제 IP 주소로 설정하세요. "
+                        f"(예: BACKEND_HOST=10.10.11.18)"
+                    )
+            
             backend_port = settings.BACKEND_PORT or 8000
 
             # 장비가 접근할 수 있는 절대 URL 생성
             audio_url = f"http://{backend_host}:{backend_port}{relative_url}"
 
             logger.info(
-                f"오디오 파일 URL 생성: {audio_url} (파일: {control.audio_file})"
+                f"오디오 파일 URL 생성: {audio_url} (파일: {control.audio_file}, "
+                f"백엔드 호스트: {backend_host})"
             )
 
         # MQTT 명령 전송
