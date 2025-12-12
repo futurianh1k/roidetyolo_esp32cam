@@ -114,11 +114,32 @@ if (-not (Test-Path $exportScript)) {
 
 if (Test-Path $exportScript) {
     Write-Host "   Found export.ps1: $exportScript" -ForegroundColor Gray
-    & $exportScript
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: Failed to export ESP-IDF environment" -ForegroundColor Red
+    
+    # export.ps1 실행 (오류 무시하고 계속 진행)
+    $ErrorActionPreference = "SilentlyContinue"
+    & $exportScript 2>&1 | Out-Null
+    $ErrorActionPreference = "Continue"
+    
+    # idf.py가 사용 가능한지 확인
+    $idfPyCheck = Get-Command idf.py -ErrorAction SilentlyContinue
+    if (-not $idfPyCheck) {
+        Write-Host ""
+        Write-Host "ERROR: ESP-IDF environment not properly set up" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "The Python virtual environment is missing or not configured." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Please run the ESP-IDF install script:" -ForegroundColor Yellow
+        Write-Host "  cd $IdfPath" -ForegroundColor Cyan
+        Write-Host "  .\install.bat esp32,esp32s3" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "Or if using ESP-IDF installer, run:" -ForegroundColor Yellow
+        Write-Host "  cd E:\esp32\Espressif" -ForegroundColor Cyan
+        Write-Host "  .\install.bat" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "See INSTALL_ESP_IDF.md for detailed instructions." -ForegroundColor Gray
         exit 1
     }
+    
     Write-Host "OK: ESP-IDF environment setup complete" -ForegroundColor Green
 }
 else {
@@ -200,20 +221,20 @@ if ($LASTEXITCODE -eq 0) {
             idf.py monitor
         }
     }
-}
-else {
-    Write-Host ""
-    Write-Host "ERROR: Build failed" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Troubleshooting:" -ForegroundColor Yellow
-    Write-Host "1. Check ESP-IDF environment variables" -ForegroundColor Gray
-    Write-Host "2. Check component dependencies (idf_component.yml)" -ForegroundColor Gray
-    Write-Host "3. Check CMakeLists.txt files" -ForegroundColor Gray
-    Write-Host "4. Check detailed log: idf.py build -v" -ForegroundColor Gray
-    exit 1
-}
 
-Write-Host ""
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "Complete" -ForegroundColor Cyan
-Write-Host "============================================================" -ForegroundColor Cyan
+    else {
+        Write-Host ""
+        Write-Host "ERROR: Build failed" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Troubleshooting:" -ForegroundColor Yellow
+        Write-Host "1. Check ESP-IDF environment variables" -ForegroundColor Gray
+        Write-Host "2. Check component dependencies (idf_component.yml)" -ForegroundColor Gray
+        Write-Host "3. Check CMakeLists.txt files" -ForegroundColor Gray
+        Write-Host "4. Check detailed log: idf.py build -v" -ForegroundColor Gray
+        exit 1
+    }
+
+    Write-Host ""
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "Complete" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan

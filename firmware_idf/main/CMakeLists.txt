@@ -38,7 +38,7 @@ idf_component_register(
         esp_wifi
         esp_http_client
         nvs_flash
-        esp_camera
+        esp32-camera
         mqtt
         esp_event
         esp_netif
