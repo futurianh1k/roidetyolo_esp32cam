@@ -2,16 +2,11 @@
 ## Core S3 Management System Dependencies
 
 dependencies:
-  # MQTT client
-  espressif/mqtt: ^1.1.0
-  
-  # JSON parsing
-  json: ^1.0.0
-  
-  # ESP Camera (if available as component)
-  # Note: esp_camera is usually part of ESP-IDF, but check if component is needed
-  
+  # Note: MQTT client is included in ESP-IDF as 'mqtt' component
+  # Note: JSON parsing can use cJSON (included in ESP-IDF) or json component
+  # Note: esp_camera is included in ESP-IDF
   # Required IDF version
   idf:
     version: '>=5.4.0'
 
+  espressif/esp32-camera: ^2.0.0

@@ -30,9 +30,30 @@ ESP-IDF v5.4 이상이 필요합니다.
    .\install.bat esp32,esp32s3
    ```
 
+**Linux/Ubuntu 설치 방법:**
+
+1. **필수 패키지 설치**
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+   ```
+
+2. **ESP-IDF 다운로드 및 설치**
+   ```bash
+   mkdir -p ~/esp
+   cd ~/esp
+   git clone --recursive https://github.com/espressif/esp-idf.git
+   cd esp-idf
+   git checkout v5.4
+   git submodule update --init --recursive
+   
+   # 설치 스크립트 실행
+   ./install.sh esp32,esp32s3
+   ```
+
 ### 2. ESP-IDF 환경 변수 설정
 
-**PowerShell에서:**
+**Windows PowerShell에서:**
 ```powershell
 # ESP-IDF 설치 경로로 이동
 cd C:\Espressif\frameworks\esp-idf-v5.4
@@ -41,48 +62,117 @@ cd C:\Espressif\frameworks\esp-idf-v5.4
 .\export.ps1
 ```
 
-**또는 CMD에서:**
+**Windows CMD에서:**
 ```cmd
 cd C:\Espressif\frameworks\esp-idf-v5.4
 .\export.bat
 ```
 
+**Linux/Ubuntu에서:**
+```bash
+# ESP-IDF 설치 경로로 이동
+cd ~/esp/esp-idf
+
+# 환경 변수 설정 (매번 실행 필요)
+. ./export.sh
+```
+
 **영구 설정 (선택사항):**
+
+**Windows:**
 - 시스템 환경 변수에 `IDF_PATH` 추가: `C:\Espressif\frameworks\esp-idf-v5.4`
 - PATH에 추가: `%IDF_PATH%\tools`
+
+**Linux:**
+- `~/.bashrc` 또는 `~/.zshrc`에 추가:
+  ```bash
+  alias get_idf='. $HOME/esp/esp-idf/export.sh'
+  ```
+  사용 시: `get_idf` 명령 실행
 
 ---
 
 ## 빌드 방법
 
-### 1. 프로젝트 디렉토리로 이동
+### 방법 1: 빌드 스크립트 사용 (권장)
 
+**Windows:**
+```powershell
+cd firmware_idf
+.\build.ps1
+```
+
+**Linux/Ubuntu:**
+```bash
+cd firmware_idf
+./build.sh
+```
+
+**옵션:**
+- `--flash` 또는 `-f`: 빌드 후 플래시
+- `--monitor` 또는 `-m`: 플래시 후 시리얼 모니터 시작
+- `--port PORT` 또는 `-p PORT`: 시리얼 포트 지정
+- `--clean` 또는 `-c`: 클린 빌드
+- `--help` 또는 `-h`: 도움말
+
+**예제:**
+```bash
+# 빌드만
+./build.sh
+
+# 빌드 후 플래시
+./build.sh --flash
+
+# 빌드, 플래시, 모니터링
+./build.sh --flash --monitor
+
+# 특정 포트로 플래시
+./build.sh --port /dev/ttyUSB0 --flash
+```
+
+### 방법 2: 수동 빌드
+
+#### 1. 프로젝트 디렉토리로 이동
+
+**Windows:**
 ```powershell
 cd D:\cursorworks\roidetyolo_esp32cam\firmware_idf
 ```
 
-### 2. ESP-IDF 환경 설정 (새 터미널마다 필요)
+**Linux:**
+```bash
+cd /path/to/roidetyolo_esp32cam/firmware_idf
+```
 
+#### 2. ESP-IDF 환경 설정 (새 터미널마다 필요)
+
+**Windows:**
 ```powershell
 # ESP-IDF 환경 변수 설정
 C:\Espressif\frameworks\esp-idf-v5.4\export.ps1
 ```
 
-### 3. 타겟 칩 설정
+**Linux:**
+```bash
+# ESP-IDF 환경 변수 설정
+. ~/esp/esp-idf/export.sh
+```
+
+#### 3. 타겟 칩 설정
 
 M5Stack Core S3는 ESP32-S3를 사용합니다:
 
-```powershell
+```bash
 idf.py set-target esp32s3
 ```
 
-### 4. 빌드 실행
+#### 4. 빌드 실행
 
-```powershell
+```bash
 idf.py build
 ```
 
-### 5. 빌드 결과 확인
+#### 5. 빌드 결과 확인
 
 빌드 성공 시:
 - `build/` 디렉토리에 펌웨어 파일 생성
@@ -149,38 +239,12 @@ idf.py build
 
 ## 빠른 빌드 스크립트
 
-### Windows PowerShell 스크립트
+프로젝트에 포함된 빌드 스크립트를 사용할 수 있습니다:
 
-`firmware_idf/build.ps1` 파일 생성:
+- **Windows:** `build.ps1` (PowerShell)
+- **Linux:** `build.sh` (Bash)
 
-```powershell
-# ESP-IDF 환경 설정
-& "C:\Espressif\frameworks\esp-idf-v5.4\export.ps1"
-
-# 프로젝트 디렉토리로 이동
-Set-Location $PSScriptRoot
-
-# 타겟 설정
-idf.py set-target esp32s3
-
-# 빌드
-idf.py build
-
-# 빌드 결과 확인
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✅ 빌드 성공!" -ForegroundColor Green
-    Write-Host "펌웨어 파일: build/cores3-management.bin" -ForegroundColor Cyan
-} else {
-    Write-Host "❌ 빌드 실패" -ForegroundColor Red
-    exit 1
-}
-```
-
-**사용법:**
-```powershell
-cd firmware_idf
-.\build.ps1
-```
+자세한 사용법은 위의 "방법 1: 빌드 스크립트 사용" 섹션을 참조하세요.
 
 ---
 
@@ -188,16 +252,27 @@ cd firmware_idf
 
 ### 1. 펌웨어 플래시
 
+**Windows:**
 ```powershell
 # 포트 자동 감지
-idf.py -p COM3 flash
+idf.py flash
 
 # 또는 포트 지정
 idf.py -p COM3 flash
 ```
 
+**Linux:**
+```bash
+# 포트 자동 감지
+idf.py flash
+
+# 또는 포트 지정
+idf.py -p /dev/ttyUSB0 flash
+```
+
 ### 2. 시리얼 모니터
 
+**Windows:**
 ```powershell
 # 플래시 후 자동 모니터링
 idf.py -p COM3 flash monitor
@@ -206,10 +281,25 @@ idf.py -p COM3 flash monitor
 idf.py -p COM3 monitor
 ```
 
+**Linux:**
+```bash
+# 플래시 후 자동 모니터링
+idf.py -p /dev/ttyUSB0 flash monitor
+
+# 모니터링만
+idf.py -p /dev/ttyUSB0 monitor
+```
+
 ### 3. 플래시 + 모니터링 (한 번에)
 
+**Windows:**
 ```powershell
 idf.py -p COM3 flash monitor
+```
+
+**Linux:**
+```bash
+idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
 **모니터 종료:** `Ctrl+]`
@@ -231,14 +321,21 @@ idf.py clean build
 
 ### 2. 병렬 빌드 (빠른 빌드)
 
+**Windows:**
 ```powershell
+# CPU 코어 수만큼 병렬 빌드
+idf.py -j$env:NUMBER_OF_PROCESSORS build
+```
+
+**Linux:**
+```bash
 # CPU 코어 수만큼 병렬 빌드
 idf.py -j$(nproc) build
 ```
 
 ### 3. 상세 빌드 로그
 
-```powershell
+```bash
 # 상세 로그 출력
 idf.py build -v
 ```
@@ -259,7 +356,7 @@ idf.py show_efuse_table
 
 ### 1. 메뉴 설정 열기
 
-```powershell
+```bash
 idf.py menuconfig
 ```
 
@@ -319,7 +416,7 @@ esp_log_level_set("CameraService", ESP_LOG_INFO);
 
 ### 3. 시리얼 모니터 필터
 
-```powershell
+```bash
 # 특정 태그만 필터링
 idf.py monitor --print-filter="AudioService:*"
 ```
@@ -355,9 +452,17 @@ idf.py monitor --print-filter="AudioService:*"
 3. 컴포넌트 의존성 확인 (`REQUIRES`)
 
 **해결:**
+
+**Windows:**
 ```powershell
 # 상세 빌드 로그로 오류 확인
 idf.py build -v 2>&1 | Select-String "error"
+```
+
+**Linux:**
+```bash
+# 상세 빌드 로그로 오류 확인
+idf.py build -v 2>&1 | grep -i error
 ```
 
 ### 문제 2: 링크 오류
@@ -367,7 +472,7 @@ idf.py build -v 2>&1 | Select-String "error"
 2. 라이브러리 의존성 확인
 
 **해결:**
-```powershell
+```bash
 # 링크 맵 확인
 idf.py size-components
 ```
@@ -379,8 +484,13 @@ idf.py size-components
 2. 스택 크기 확인
 
 **해결:**
-- `menuconfig`에서 파티션 테이블 크기 조정
-- 태스크 스택 크기 조정
+```bash
+# menuconfig에서 파티션 테이블 크기 조정
+idf.py menuconfig
+
+# 태스크 스택 크기 조정
+# 코드에서 xTaskCreate의 스택 크기 파라미터 증가
+```
 
 ---
 
