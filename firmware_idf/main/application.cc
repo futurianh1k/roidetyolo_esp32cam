@@ -90,11 +90,12 @@ void Application::Initialize() {
       .scl_io_num = GPIO_NUM_11,
       .clk_source = I2C_CLK_SRC_DEFAULT,
       .glitch_ignore_cnt = 7,
-      .flags = {
-          .enable_internal_pullup = true,
-      },
+      .flags =
+          {
+              .enable_internal_pullup = true,
+          },
   };
-  
+
   esp_err_t i2c_ret = i2c_new_master_bus(&i2c_bus_config, &i2c_bus_handle);
   if (i2c_ret == ESP_OK) {
     ESP_LOGI(TAG, "I2C master bus initialized for camera");
