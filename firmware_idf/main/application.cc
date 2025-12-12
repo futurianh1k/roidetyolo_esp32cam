@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <cJSON.h>
 #include <cstring>
-#include <driver/i2c.h>
+#include <driver/i2c_master.h>
 #include <esp_log.h>
 
 #define TAG "Application"
@@ -80,24 +80,27 @@ void Application::Initialize() {
     }
   }
 
-  // Initialize I2C for camera and peripherals (MUST be before camera init!)
-  // M5Stack CoreS3: GPIO11=SCL, GPIO12=SDA
-  i2c_config_t i2c_conf = {};
-  i2c_conf.mode = I2C_MODE_MASTER;
-  i2c_conf.sda_io_num = (gpio_num_t)12;
-  i2c_conf.scl_io_num = (gpio_num_t)11;
-  i2c_conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-  i2c_conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-  i2c_conf.master.clk_speed = 100000; // 100kHz
-
-  esp_err_t i2c_ret = i2c_param_config(I2C_NUM_1, &i2c_conf);
+  // Initialize I2C for camera (MUST be before camera init!)
+  // M5Stack CoreS3: I2C_NUM_1, GPIO11=SCL, GPIO12=SDA
+  // Reference: esp-bsp/m5stack_core_s3/m5stack_core_s3.c
+  static i2c_master_bus_handle_t i2c_bus_handle = NULL;
+  const i2c_master_bus_config_t i2c_bus_config = {
+      .i2c_port = I2C_NUM_1,
+      .sda_io_num = GPIO_NUM_12,
+      .scl_io_num = GPIO_NUM_11,
+      .clk_source = I2C_CLK_SRC_DEFAULT,
+      .glitch_ignore_cnt = 7,
+      .flags = {
+          .enable_internal_pullup = true,
+      },
+  };
+  
+  esp_err_t i2c_ret = i2c_new_master_bus(&i2c_bus_config, &i2c_bus_handle);
   if (i2c_ret == ESP_OK) {
-    i2c_ret = i2c_driver_install(I2C_NUM_1, I2C_MODE_MASTER, 0, 0, 0);
-    if (i2c_ret == ESP_OK) {
-      ESP_LOGI(TAG, "I2C initialized for camera");
-    } else {
-      ESP_LOGW(TAG, "I2C driver install failed (may be already installed)");
-    }
+    ESP_LOGI(TAG, "I2C master bus initialized for camera");
+  } else {
+    ESP_LOGW(TAG, "I2C init failed: %s (may be already initialized)",
+             esp_err_to_name(i2c_ret));
   }
 
   // Initialize camera

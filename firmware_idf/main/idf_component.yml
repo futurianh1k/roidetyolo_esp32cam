@@ -4,7 +4,7 @@
 dependencies:
   # Required IDF version
   idf:
-    version: ">=5.4.0"
+    version: '>=5.4.0'
 
   # ESP32 Camera driver (required for ESP-IDF v5.x)
   espressif/esp32-camera: ^2.0.0
@@ -16,3 +16,4 @@ dependencies:
 # They are included via REQUIRES in CMakeLists.txt, not here.
 # Note: MQTT client is included in ESP-IDF as 'mqtt' component
 # Note: JSON parsing can use cJSON (included in ESP-IDF) or json component
+  espressif/esp_lcd_ili9341: ^2.0.0

@@ -1,4 +1,14 @@
 dependencies:
+  espressif/cmake_utilities:
+    component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 0.5.3
   espressif/esp32-camera:
     component_hash: f0a608b109935a5389221eee5090ec61f51b0df1a0749531fe59d33aaf263233
     dependencies:
@@ -23,6 +33,20 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 1.3.1
+  espressif/esp_lcd_ili9341:
+    component_hash: 0baab584e0e490511d6bdbae6aa045130424d732ecdaad6cd1d3bd3c0abe2c30
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: 0.*
+    - name: idf
+      require: private
+      version: '>=4.4'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.0.2
   espressif/esp_websocket_client:
     component_hash: 723aba370113196c66321442426cd6452c351eef31c85c83bd1446831ef9f8f4
     dependencies:
@@ -39,8 +63,9 @@ dependencies:
     version: 5.5.1
 direct_dependencies:
 - espressif/esp32-camera
+- espressif/esp_lcd_ili9341
 - espressif/esp_websocket_client
 - idf
-manifest_hash: 748ca4f3716171654dbb382f61cd9edcf5dad99970477de5d89c958777ef319e
+manifest_hash: c82696d57ad6fc1ef93cb5df609191e2f54b7476cf17d1dd993393e0ae0b1c38
 target: esp32s3
 version: 2.0.0
