@@ -10,35 +10,36 @@
 
 /**
  * M5Stack CoreS3 Camera Configuration
- * Reference: esp-bsp/m5stack_core_s3/include/bsp/m5stack_core_s3.h
+ * Reference:
+ * https://github.com/felmue/MyM5StackExamples/blob/main/M5CoreS3/CamWebServer/
  *
  * Camera: GC0308 (0.3MP)
  * - Does NOT support JPEG! Use RGB565 or GRAYSCALE
- * - XCLK is not connected (camera uses internal clock)
- * - I2C controlled via port 1 (GPIO11/12)
+ * - XCLK is GPIO 2!
+ * - Uses existing I2C port 1 (initialized in application.cc)
  */
 static camera_config_t camera_config = {
     .pin_pwdn = GPIO_NUM_NC,
     .pin_reset = GPIO_NUM_NC,
-    .pin_xclk = GPIO_NUM_NC,     // Not connected!
-    .pin_sscb_sda = GPIO_NUM_NC, // Use I2C port instead
-    .pin_sccb_scl = GPIO_NUM_NC, // Use I2C port instead
+    .pin_xclk = GPIO_NUM_2,      // XCLK is connected to GPIO 2!
+    .pin_sscb_sda = GPIO_NUM_NC, // Use existing I2C port
+    .pin_sccb_scl = GPIO_NUM_NC, // Use existing I2C port
 
-    // Data pins - from official BSP
-    .pin_d7 = GPIO_NUM_47,    // BSP_CAMERA_D7
-    .pin_d6 = GPIO_NUM_48,    // BSP_CAMERA_D6
-    .pin_d5 = GPIO_NUM_16,    // BSP_CAMERA_D5
-    .pin_d4 = GPIO_NUM_15,    // BSP_CAMERA_D4
-    .pin_d3 = GPIO_NUM_42,    // BSP_CAMERA_D3
-    .pin_d2 = GPIO_NUM_41,    // BSP_CAMERA_D2
-    .pin_d1 = GPIO_NUM_40,    // BSP_CAMERA_D1
-    .pin_d0 = GPIO_NUM_39,    // BSP_CAMERA_D0
-    .pin_vsync = GPIO_NUM_46, // BSP_CAMERA_VSYNC
-    .pin_href = GPIO_NUM_38,  // BSP_CAMERA_HSYNC
-    .pin_pclk = GPIO_NUM_45,  // BSP_CAMERA_PCLK
+    // Data pins - from working example
+    .pin_d7 = GPIO_NUM_47,
+    .pin_d6 = GPIO_NUM_48,
+    .pin_d5 = GPIO_NUM_16,
+    .pin_d4 = GPIO_NUM_15,
+    .pin_d3 = GPIO_NUM_42,
+    .pin_d2 = GPIO_NUM_41,
+    .pin_d1 = GPIO_NUM_40,
+    .pin_d0 = GPIO_NUM_39,
+    .pin_vsync = GPIO_NUM_46,
+    .pin_href = GPIO_NUM_38,
+    .pin_pclk = GPIO_NUM_45,
 
-    // GC0308 camera settings - from official BSP
-    .xclk_freq_hz = 10000000, // 10MHz
+    // GC0308 camera settings
+    .xclk_freq_hz = 20000000, // 20MHz (from working example)
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
 
@@ -50,7 +51,7 @@ static camera_config_t camera_config = {
     .fb_location = CAMERA_FB_IN_PSRAM,
     .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
 
-    // I2C port 1 (GPIO11=SCL, GPIO12=SDA)
+    // Use existing I2C port 1 (already initialized in application.cc)
     .sccb_i2c_port = 1,
 };
 
