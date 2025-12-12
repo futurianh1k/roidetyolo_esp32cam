@@ -54,6 +54,80 @@ export default function DeviceDetailPage() {
     // }
   }, [isAuthenticated, mounted, router]);
 
+  // 백엔드 WebSocket으로 음성인식 결과 수신 (ESP32에서 전송한 결과)
+  useEffect(() => {
+    if (!mounted || !device) return;
+
+    // 백엔드 WebSocket 연결 (장비 구독)
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      // 토큰이 없어도 연결 시도 (임시)
+      console.warn('WebSocket 연결을 위한 토큰이 없습니다 (임시로 연결 시도)');
+    }
+
+    // API URL에서 WebSocket URL 생성
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? window.location.origin.replace('3000', '8000') : 'http://localhost:8000');
+    const wsUrl = apiUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:') + '/ws' + (token ? `?token=${token}` : '');
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+      console.log('✅ 백엔드 WebSocket 연결 성공');
+      // 장비 구독
+      ws.send(JSON.stringify({
+        type: 'subscribe_device',
+        device_id: device.id
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        // 음성인식 결과 수신 (ESP32에서 전송)
+        if (data.type === 'asr_result' && data.device_id === device.id) {
+          const result: RecognitionResult = {
+            type: 'recognition_result',
+            device_id: data.device_id,
+            device_name: data.device_name,
+            session_id: data.session_id,
+            text: data.text,
+            timestamp: data.timestamp,
+            duration: data.duration || 0,
+            is_emergency: data.is_emergency || false,
+            emergency_keywords: data.emergency_keywords || [],
+          };
+
+          setRecognitionResults((prev) => [...prev, result]);
+          
+          // 장비 디스플레이에 표시 (이미 ESP32에서 표시하지만, 프론트엔드에서도 명시적으로 요청)
+          const displayText = result.is_emergency
+            ? `🚨 응급: ${result.text}`
+            : result.text;
+          
+          controlAPI.display(device.id, 'show_text', displayText).catch((error) => {
+            console.error('디스플레이 업데이트 실패:', error);
+          });
+        }
+      } catch (error) {
+        console.error('WebSocket 메시지 파싱 오류:', error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('❌ 백엔드 WebSocket 오류:', error);
+    };
+
+    ws.onclose = () => {
+      console.log('🔌 백엔드 WebSocket 연결 종료');
+    };
+
+    return () => {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
+    };
+  }, [mounted, device]);
+
   // 장비 정보 조회
   const { data: device, isLoading: deviceLoading, refetch: refetchDevice } = useQuery({
     queryKey: ['device', deviceId],

@@ -9,6 +9,9 @@ dependencies:
   # ESP32 Camera driver (required for ESP-IDF v5.x)
   espressif/esp32-camera: ^2.0.0
 
+  # WebSocket Client (required for ASR service)
+  # ESP-IDF v5.x에서는 Component Manager를 통해 추가 필요
+  espressif/esp_websocket_client: ^1.5.0
 # Note: MQTT and JSON are built-in components in ESP-IDF v5.x
 # They are included via REQUIRES in CMakeLists.txt, not here.
 # Note: MQTT client is included in ESP-IDF as 'mqtt' component

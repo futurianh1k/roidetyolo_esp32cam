@@ -16,7 +16,14 @@ set(SOURCES
     
     # Network module
     "network/wifi_manager.cc"
-    "network/mqtt_client.cc"
+    "network/mqtt_client_wrapper.cc"
+    "network/websocket_client.cc"
+    
+    # ASR module
+    "asr/asr_service.cc"
+    
+    # Display module
+    "display/display_service.cc"
 )
 
 # Include directories
@@ -26,7 +33,7 @@ set(INCLUDE_DIRS
     "camera"
     "network"
     "display"
-    "status"
+    "asr"
 )
 
 # Register component
@@ -37,10 +44,12 @@ idf_component_register(
         driver
         esp_wifi
         esp_http_client
+        esp_websocket_client
         nvs_flash
         esp32-camera
         mqtt
         esp_event
         esp_netif
+        json
 )
 

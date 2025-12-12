@@ -31,7 +31,7 @@
 
 // 카메라 설정
 // Note: FRAMESIZE_VGA는 esp_camera.h에서 정의됨
-#define CAMERA_FRAMESIZE FRAMESIZE_VGA  // 640x480
+#define CAMERA_FRAMESIZE FRAMESIZE_VGA // 640x480
 #define CAMERA_QUALITY 10
 #define CAMERA_BRIGHTNESS 0
 #define CAMERA_CONTRAST 0
@@ -45,5 +45,19 @@
 // 상태 보고 설정
 #define STATUS_REPORT_INTERVAL_MS 10000
 
-#endif // CONFIG_H
+// ASR 서버 설정
+#define ASR_SERVER_HOST "10.10.11.17"
+#define ASR_SERVER_PORT 8001
+#define ASR_SERVER_API_URL                                                     \
+  "http://" ASR_SERVER_HOST ":" STRINGIFY(ASR_SERVER_PORT)
+#define STRINGIFY(x) #x
 
+// 백엔드 서버 설정 (음성인식 결과 전송용)
+#define BACKEND_HOST "10.10.11.18"
+#define BACKEND_PORT 8000
+#define BACKEND_URL "http://" BACKEND_HOST ":" STRINGIFY(BACKEND_PORT)
+
+// MQTT 명령 토픽
+#define TOPIC_COMMAND "devices/" DEVICE_ID "/command"
+
+#endif // CONFIG_H
