@@ -6,15 +6,14 @@
 #include <esp_http_client.h>
 #include <esp_log.h>
 
-
 #define TAG "CameraService"
 
 static camera_config_t camera_config = {
-    .pin_pwdn = (gpio_num_t)PWDN_GPIO_NUM,
-    .pin_reset = (gpio_num_t)RESET_GPIO_NUM,
-    .pin_xclk = (gpio_num_t)XCLK_GPIO_NUM,
-    .pin_sscb_sda = (gpio_num_t)SIOD_GPIO_NUM,
-    .pin_sscb_scl = (gpio_num_t)SIOC_GPIO_NUM,
+    .pin_pwdn = GPIO_NUM_NC,
+    .pin_reset = GPIO_NUM_NC,
+    .pin_xclk = GPIO_NUM_NC,     // Not connected! Camera uses internal clock
+    .pin_sscb_sda = GPIO_NUM_NC, // Use I2C port instead
+    .pin_sscb_scl = GPIO_NUM_NC, // Use I2C port instead
 
     .pin_d7 = (gpio_num_t)Y9_GPIO_NUM,
     .pin_d6 = (gpio_num_t)Y8_GPIO_NUM,
@@ -29,7 +28,9 @@ static camera_config_t camera_config = {
     .pin_pclk = (gpio_num_t)PCLK_GPIO_NUM,
 
     // GC0308 camera settings for M5Stack CoreS3
-    .xclk_freq_hz = 10000000, // GC0308 typical: 6-27MHz, use 10MHz
+    // Reference:
+    // https://github.com/espressif/esp-bsp/tree/master/bsp/m5stack_core_s3
+    .xclk_freq_hz = 10000000, // 10MHz (official BSP value)
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
 
@@ -37,9 +38,12 @@ static camera_config_t camera_config = {
     .pixel_format = PIXFORMAT_JPEG,
     .frame_size = CAMERA_FRAMESIZE, // From config.h (VGA 640x480)
     .jpeg_quality = CAMERA_QUALITY,
-    .fb_count = 2, // Use 2 frame buffers for better performance
+    .fb_count = 2, // Double buffering (official BSP recommendation)
     .fb_location = CAMERA_FB_IN_PSRAM,
     .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
+
+    // Use I2C port 1 (GPIO11/12) - Critical for M5Stack CoreS3!
+    .sccb_i2c_port = 1,
 };
 
 CameraService::CameraService() {}

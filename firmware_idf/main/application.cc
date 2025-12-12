@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cJSON.h>
 #include <cstring>
+#include <driver/i2c.h>
 #include <esp_log.h>
 
 #define TAG "Application"
@@ -76,6 +77,26 @@ void Application::Initialize() {
     if (audio_service_->Initialize(audio_codec_)) {
       audio_service_->Start();
       ESP_LOGI(TAG, "Audio service initialized");
+    }
+  }
+
+  // Initialize I2C for camera and peripherals (MUST be before camera init!)
+  // M5Stack CoreS3: GPIO11=SCL, GPIO12=SDA
+  i2c_config_t i2c_conf = {};
+  i2c_conf.mode = I2C_MODE_MASTER;
+  i2c_conf.sda_io_num = (gpio_num_t)12;
+  i2c_conf.scl_io_num = (gpio_num_t)11;
+  i2c_conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+  i2c_conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+  i2c_conf.master.clk_speed = 100000; // 100kHz
+
+  esp_err_t i2c_ret = i2c_param_config(I2C_NUM_1, &i2c_conf);
+  if (i2c_ret == ESP_OK) {
+    i2c_ret = i2c_driver_install(I2C_NUM_1, I2C_MODE_MASTER, 0, 0, 0);
+    if (i2c_ret == ESP_OK) {
+      ESP_LOGI(TAG, "I2C initialized for camera");
+    } else {
+      ESP_LOGW(TAG, "I2C driver install failed (may be already installed)");
     }
   }
 

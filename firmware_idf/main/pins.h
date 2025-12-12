@@ -2,27 +2,28 @@
 #define PINS_H
 
 // 카메라 핀 (M5Stack CoreS3 - GC0308)
-// Reference: https://docs.m5stack.com/en/core/CoreS3
-// Camera: GC0308 (0.3MP)
-#define PWDN_GPIO_NUM -1 // Not connected
-#define RESET_GPIO_NUM 1 // Reset pin (was AW9523B P1_0, now GPIO1)
-#define XCLK_GPIO_NUM 8  // External clock (corrected from GPIO40)
-#define SIOD_GPIO_NUM 12 // I2C SDA
-#define SIOC_GPIO_NUM 11 // I2C SCL
+// Reference:
+// https://github.com/espressif/esp-bsp/tree/master/bsp/m5stack_core_s3 Official
+// ESP BSP pin definitions
+#define PWDN_GPIO_NUM -1  // Not connected
+#define RESET_GPIO_NUM -1 // Controlled via AW9523B I/O expander
+#define XCLK_GPIO_NUM -1  // Not connected! (uses internal clock)
+#define SIOD_GPIO_NUM -1  // Use I2C port (not GPIO)
+#define SIOC_GPIO_NUM -1  // Use I2C port (not GPIO)
 
-// Data pins (D0-D7) - GC0308
-#define Y9_GPIO_NUM 4  // D7
-#define Y8_GPIO_NUM 5  // D6
-#define Y7_GPIO_NUM 6  // D5
-#define Y6_GPIO_NUM 7  // D4
-#define Y5_GPIO_NUM 15 // D3
-#define Y4_GPIO_NUM 16 // D2
-#define Y3_GPIO_NUM 48 // D1
-#define Y2_GPIO_NUM 47 // D0
+// Data pins (D0-D7) - GC0308 (Corrected from official BSP)
+#define Y9_GPIO_NUM 47 // D7
+#define Y8_GPIO_NUM 48 // D6
+#define Y7_GPIO_NUM 16 // D5
+#define Y6_GPIO_NUM 15 // D4
+#define Y5_GPIO_NUM 42 // D3
+#define Y4_GPIO_NUM 41 // D2
+#define Y3_GPIO_NUM 40 // D1
+#define Y2_GPIO_NUM 39 // D0
 
-// Control pins
+// Control pins (Confirmed from official BSP)
 #define VSYNC_GPIO_NUM 46 // Vertical sync
-#define HREF_GPIO_NUM 38  // Horizontal reference
+#define HREF_GPIO_NUM 38  // Horizontal reference (HSYNC)
 #define PCLK_GPIO_NUM 45  // Pixel clock
 
 // I2S 핀 (오디오) - M5Stack CoreS3
