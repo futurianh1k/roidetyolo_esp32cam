@@ -1,8 +1,10 @@
 # 테스트 결과 분석 및 후속 개발 계획
 
 **작성일**: 2025-01-13  
-**버전**: 1.1  
+**버전**: 1.2  
 **최종 업데이트**: 2025-01-13
+
+> **v1.2 변경사항**: 펌웨어 상태 전송 및 MQTT 명령 처리 구현 완료
 
 ---
 
@@ -355,18 +357,31 @@ def update_device_online_status(db: Session, device: Device) -> bool:
 
 ### 다음 단계 필요 작업
 
+✅ **완료됨 (v1.2)**:
+
 1. **펌웨어 상태 전송 구현**
 
-   - 주기적으로 `POST /devices/{id}/status` 호출
-   - 배터리, 온도, CPU 사용률, 메모리 등 전송
+   - `StatusReporter` 클래스 구현 (`status/status_reporter.cc`)
+   - `BackendClient` HTTP 클라이언트 구현 (`network/backend_client.cc`)
+   - 10초 주기로 `POST /devices/{id}/status` 자동 호출
+   - 메모리 사용량, 카메라/마이크 상태 전송
 
 2. **펌웨어 MQTT 명령 수신 구현**
+   - 카메라 시작/정지/일시정지: `/control/camera`
+   - 마이크(ASR) 시작/정지: `/control/microphone`
+   - 스피커 제어: `/control/speaker`
+   - 디스플레이 제어: `/control/display`
+   - 시스템 재시작: `/control/system`
 
-   - 카메라 시작/정지
-   - 마이크 시작/정지
+🔜 **다음 단계**:
+
+1. **펌웨어 빌드 및 테스트**
+2. **실제 장비 연동 테스트**
+3. **Phase 0: 테스트 환경 안정화**
+
    - 디스플레이 텍스트 표시
 
-3. **비디오 스트리밍 구현**
+4. **비디오 스트리밍 구현**
    - 펌웨어: MJPEG 스트림 서버
    - 프론트엔드: VideoPlayer 컴포넌트 연동
 

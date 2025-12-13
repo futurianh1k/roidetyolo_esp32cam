@@ -31,6 +31,9 @@ set(SOURCES
     
     # Status module
     "status/status_reporter.cc"
+    
+    # Input module
+    "input/button_service.cc"
 )
 
 # Include directories
@@ -43,6 +46,7 @@ set(INCLUDE_DIRS
     "display"
     "asr"
     "status"
+    "input"
 )
 
 # Register component

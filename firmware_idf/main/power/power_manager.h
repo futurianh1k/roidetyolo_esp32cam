@@ -13,6 +13,7 @@
 #ifndef POWER_MANAGER_H
 #define POWER_MANAGER_H
 
+#include <driver/gpio.h>
 #include <driver/i2c_master.h>
 #include <esp_err.h>
 
@@ -91,6 +92,50 @@ public:
    * @return 초기화 완료 여부
    */
   bool IsInitialized() const { return initialized_; }
+
+  /**
+   * @brief Light Sleep 모드 진입 (WiFi 유지)
+   * @param duration_ms 슬립 시간 (ms), 0 = 무한 (이벤트로 깨움)
+   * @return 성공 여부
+   *
+   * Light Sleep은 WiFi 연결을 유지하면서 저전력 모드로 진입합니다.
+   * GPIO 인터럽트, 타이머, WiFi 이벤트로 깨어날 수 있습니다.
+   */
+  bool EnterLightSleep(uint32_t duration_ms = 0);
+
+  /**
+   * @brief Deep Sleep 모드 진입 (전원 절약)
+   * @param duration_sec 슬립 시간 (초), 0 = 무한 (GPIO로만 깨움)
+   *
+   * Deep Sleep은 WiFi 연결을 끊고 최소 전력으로 대기합니다.
+   * GPIO 인터럽트, 타이머로만 깨어날 수 있습니다.
+   * 깨어나면 시스템이 재부팅됩니다.
+   */
+  void EnterDeepSleep(uint32_t duration_sec = 0);
+
+  /**
+   * @brief GPIO 웨이크업 소스 설정
+   * @param gpio_pin 웨이크업 소스로 사용할 GPIO 핀
+   * @param level 웨이크업 트리거 레벨 (0 = LOW, 1 = HIGH)
+   * @return 성공 여부
+   */
+  bool SetWakeupSource(gpio_num_t gpio_pin, int level);
+
+  /**
+   * @brief 웨이크업 원인 확인
+   * @return 웨이크업 원인 (ESP-IDF esp_sleep_wakeup_cause_t)
+   */
+  int GetWakeupCause();
+
+  /**
+   * @brief 웨이크업 원인이 타이머인지 확인
+   */
+  bool WasWokenByTimer();
+
+  /**
+   * @brief 웨이크업 원인이 GPIO인지 확인
+   */
+  bool WasWokenByGPIO();
 
 private:
   // AXP2101 레지스터 정의

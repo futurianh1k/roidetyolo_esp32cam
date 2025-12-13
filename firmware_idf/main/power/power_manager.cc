@@ -10,6 +10,8 @@
 
 #include "power_manager.h"
 #include <esp_log.h>
+#include <esp_sleep.h>
+#include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -399,4 +401,79 @@ bool PowerManager::UpdateAW9523Output(uint8_t reg, uint8_t mask, bool set) {
   }
 
   return WriteAW9523(reg, *cache);
+}
+
+bool PowerManager::EnterLightSleep(uint32_t duration_ms) {
+  ESP_LOGI(TAG, "Entering Light Sleep mode (duration=%d ms)", duration_ms);
+
+  // WiFi 모뎀 슬립 활성화 (Light Sleep에서 WiFi 유지)
+  esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
+
+  // 타이머 웨이크업 소스 설정 (duration_ms > 0인 경우)
+  if (duration_ms > 0) {
+    esp_sleep_enable_timer_wakeup(duration_ms * 1000ULL); // us 단위
+  }
+
+  // GPIO 웨이크업 소스 설정 (전원 버튼)
+  // GPIO35 = AXP2101 IRQ, LOW에서 깨움
+  esp_sleep_enable_gpio_wakeup();
+  gpio_wakeup_enable(GPIO_NUM_35, GPIO_INTR_LOW_LEVEL);
+
+  // Light Sleep 진입
+  esp_err_t ret = esp_light_sleep_start();
+
+  // 깨어남
+  if (ret == ESP_OK) {
+    ESP_LOGI(TAG, "Woke up from Light Sleep (cause=%d)", GetWakeupCause());
+    return true;
+  } else {
+    ESP_LOGE(TAG, "Light Sleep failed: %s", esp_err_to_name(ret));
+    return false;
+  }
+}
+
+void PowerManager::EnterDeepSleep(uint32_t duration_sec) {
+  ESP_LOGI(TAG, "Entering Deep Sleep mode (duration=%d sec)", duration_sec);
+
+  // 타이머 웨이크업 소스 설정 (duration_sec > 0인 경우)
+  if (duration_sec > 0) {
+    esp_sleep_enable_timer_wakeup(duration_sec * 1000000ULL); // us 단위
+  }
+
+  // GPIO 웨이크업 소스 설정 (전원 버튼)
+  // EXT0: 단일 GPIO 핀으로 웨이크업
+  // GPIO35 = AXP2101 IRQ, LOW에서 깨움
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
+
+  // 디스플레이에 메시지 표시 (옵션)
+  ESP_LOGI(TAG, "Going to Deep Sleep...");
+
+  // Deep Sleep 진입 (돌아오지 않음 - 재부팅됨)
+  esp_deep_sleep_start();
+}
+
+bool PowerManager::SetWakeupSource(gpio_num_t gpio_pin, int level) {
+  // EXT0 웨이크업 소스 설정
+  esp_err_t ret = esp_sleep_enable_ext0_wakeup(gpio_pin, level);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to set wakeup source: %s", esp_err_to_name(ret));
+    return false;
+  }
+
+  ESP_LOGI(TAG, "Wakeup source set: GPIO%d, level=%d", gpio_pin, level);
+  return true;
+}
+
+int PowerManager::GetWakeupCause() {
+  return static_cast<int>(esp_sleep_get_wakeup_cause());
+}
+
+bool PowerManager::WasWokenByTimer() {
+  return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER;
+}
+
+bool PowerManager::WasWokenByGPIO() {
+  esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+  return (cause == ESP_SLEEP_WAKEUP_EXT0 || cause == ESP_SLEEP_WAKEUP_EXT1 ||
+          cause == ESP_SLEEP_WAKEUP_GPIO);
 }

@@ -54,6 +54,17 @@ export default function DeviceDetailPage() {
     // }
   }, [isAuthenticated, mounted, router]);
 
+  // 장비 정보 조회 (WebSocket useEffect 전에 선언해야 함)
+  const { data: device, isLoading: deviceLoading, refetch: refetchDevice } = useQuery({
+    queryKey: ['device', deviceId],
+    queryFn: async () => {
+      const { data } = await devicesAPI.getById(deviceId);
+      return data;
+    },
+    // TODO: 로그인 수정 후 isAuthenticated 체크 활성화
+    enabled: mounted && !isNaN(deviceId),
+  });
+
   // 백엔드 WebSocket으로 음성인식 결과 수신 (ESP32에서 전송한 결과)
   useEffect(() => {
     if (!mounted || !device) return;
@@ -127,17 +138,6 @@ export default function DeviceDetailPage() {
       }
     };
   }, [mounted, device]);
-
-  // 장비 정보 조회
-  const { data: device, isLoading: deviceLoading, refetch: refetchDevice } = useQuery({
-    queryKey: ['device', deviceId],
-    queryFn: async () => {
-      const { data } = await devicesAPI.getById(deviceId);
-      return data;
-    },
-    // TODO: 로그인 수정 후 isAuthenticated 체크 활성화
-    enabled: mounted && !isNaN(deviceId),
-  });
 
   // IP 주소 편집 상태 초기화
   useEffect(() => {

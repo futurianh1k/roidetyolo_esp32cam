@@ -49,6 +49,14 @@
 // 상태 보고 설정
 #define STATUS_REPORT_INTERVAL_MS 10000
 
+// 버튼 설정
+#define BUTTON_LONG_PRESS_MS 1000  // 롱프레스 감지 시간
+#define BUTTON_DOUBLE_CLICK_MS 300 // 더블클릭 감지 시간
+
+// 절전 모드 설정
+#define LIGHT_SLEEP_DURATION_MS 300000 // Light Sleep 지속 시간 (5분)
+#define DEEP_SLEEP_DURATION_SEC 0 // Deep Sleep 지속 시간 (0 = GPIO로만 깨움)
+
 // ASR 서버 설정
 #define ASR_SERVER_HOST "10.10.11.17"
 #define ASR_SERVER_PORT 8001

@@ -5,6 +5,7 @@
 #include "camera/camera_service.h"
 #include "config.h"
 #include "display/display_service.h"
+#include "input/button_service.h"
 #include "network/backend_client.h"
 #include "network/mqtt_client_wrapper.h"
 #include "network/wifi_manager.h"
@@ -29,6 +30,7 @@ static MQTTClient *mqtt_client_ = nullptr;
 static ASRService *asr_service_ = nullptr;
 static DisplayService *display_service_ = nullptr;
 static StatusReporter *status_reporter_ = nullptr;
+static ButtonService *button_service_ = nullptr;
 
 Application::Application() {
   event_group_ = xEventGroupCreate();
@@ -185,6 +187,20 @@ void Application::Initialize() {
              STATUS_REPORT_INTERVAL_MS);
   } else {
     ESP_LOGW(TAG, "Status reporter initialization failed");
+  }
+
+  // Initialize Button Service (버튼 입력 처리)
+  button_service_ = new ButtonService();
+  if (button_service_->Initialize()) {
+    // 버튼 이벤트 콜백 설정
+    button_service_->SetButtonCallback(
+        [this](ButtonId button, ButtonEvent event) {
+          HandleButtonEvent(button, event);
+        });
+    button_service_->Start();
+    ESP_LOGI(TAG, "Button service initialized");
+  } else {
+    ESP_LOGW(TAG, "Button service initialization failed");
   }
 
   // Initialize MQTT (after WiFi connected)
@@ -565,4 +581,92 @@ void Application::HandleErrorEvent() {
 
 void Application::OnStateChanged(DeviceState old_state, DeviceState new_state) {
   ESP_LOGI(TAG, "State changed: %d -> %d", old_state, new_state);
+}
+
+void Application::HandleButtonEvent(ButtonId button, ButtonEvent event) {
+  ESP_LOGI(TAG, "Button event: button=%d, event=%d", static_cast<int>(button),
+           static_cast<int>(event));
+
+  // 버튼 A 누름: 즉시 상태 보고 (온라인 전환)
+  if (button == ButtonId::kButtonA && event == ButtonEvent::kPressed) {
+    if (status_reporter_) {
+      ESP_LOGI(TAG, "Button A pressed: Reporting status now (force online)");
+      status_reporter_->ReportNow();
+
+      if (display_service_) {
+        display_service_->ShowText("상태 보고 완료", 2000);
+      }
+    }
+  }
+
+  // 버튼 B 누름: ASR 토글
+  if (button == ButtonId::kButtonB && event == ButtonEvent::kPressed) {
+    if (asr_service_) {
+      if (asr_service_->IsSessionActive()) {
+        // ASR 중지
+        asr_service_->StopSession();
+        if (display_service_) {
+          display_service_->ShowListening(false);
+        }
+        if (status_reporter_) {
+          status_reporter_->SetMicStatus("stopped");
+        }
+        SetDeviceState(kDeviceStateIdle);
+        ESP_LOGI(TAG, "Button B pressed: ASR stopped");
+      } else {
+        // ASR 시작
+        if (asr_service_->StartSession("ko")) {
+          if (display_service_) {
+            display_service_->ShowListening(true);
+          }
+          if (status_reporter_) {
+            status_reporter_->SetMicStatus("active");
+          }
+          SetDeviceState(kDeviceStateListening);
+          ESP_LOGI(TAG, "Button B pressed: ASR started");
+        }
+      }
+    }
+  }
+
+  // 버튼 C 누름: 디스플레이 클리어
+  if (button == ButtonId::kButtonC && event == ButtonEvent::kPressed) {
+    if (display_service_) {
+      display_service_->Clear();
+      ESP_LOGI(TAG, "Button C pressed: Display cleared");
+    }
+  }
+
+  // 전원 버튼 길게 누름: Light Sleep 모드 진입
+  if (button == ButtonId::kButtonPower && event == ButtonEvent::kLongPress) {
+    ESP_LOGI(TAG, "Power button long press: Entering Light Sleep");
+    if (display_service_) {
+      display_service_->ShowText("절전 모드...", 1000);
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    if (power_manager_) {
+      // 5분 후 자동 깨우기 또는 버튼으로 깨우기
+      power_manager_->EnterLightSleep(300000); // 5분
+
+      // 깨어난 후 즉시 상태 보고
+      if (status_reporter_) {
+        ESP_LOGI(TAG, "Woke up from Light Sleep, reporting status");
+        status_reporter_->ReportNow();
+      }
+      if (display_service_) {
+        display_service_->ShowText("활성화됨", 2000);
+      }
+    }
+  }
+
+  // 전원 버튼 더블클릭: 시스템 재시작
+  if (button == ButtonId::kButtonPower && event == ButtonEvent::kDoubleClick) {
+    ESP_LOGI(TAG, "Power button double click: Restarting system");
+    if (display_service_) {
+      display_service_->ShowText("재시작...", 2000);
+    }
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    esp_restart();
+  }
 }

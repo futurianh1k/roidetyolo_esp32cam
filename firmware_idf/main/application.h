@@ -6,16 +6,15 @@
 #include <freertos/event_groups.h>
 #include <freertos/task.h>
 
-
 #include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 
-
 #include "device_state.h"
 #include "device_state_machine.h"
+#include "input/button_service.h"
 
 // Main event bits
 #define MAIN_EVENT_SCHEDULE (1 << 0)
@@ -90,6 +89,9 @@ private:
   void HandleNetworkConnectedEvent();
   void HandleNetworkDisconnectedEvent();
   void HandleErrorEvent();
+
+  // Button event handler
+  void HandleButtonEvent(ButtonId button, ButtonEvent event);
 
   // State change handler called by state machine
   void OnStateChanged(DeviceState old_state, DeviceState new_state);
