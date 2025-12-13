@@ -7,6 +7,9 @@ set(SOURCES
     "device_state_machine.cc"
     "device_state.h"
     
+    # Power module (AXP2101, AW9523)
+    "power/power_manager.cc"
+    
     # Audio module
     "audio/audio_service.cc"
     "audio/audio_codec.cc"
@@ -29,6 +32,7 @@ set(SOURCES
 # Include directories
 set(INCLUDE_DIRS
     "."
+    "power"
     "audio"
     "camera"
     "network"

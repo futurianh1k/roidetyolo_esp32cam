@@ -7,15 +7,16 @@
 #include "display/display_service.h"
 #include "network/mqtt_client_wrapper.h"
 #include "network/wifi_manager.h"
+#include "power/power_manager.h"
 #include <algorithm>
 #include <cJSON.h>
 #include <cstring>
-#include <driver/i2c_master.h>
 #include <esp_log.h>
 
 #define TAG "Application"
 
 // 전역 인스턴스
+static PowerManager *power_manager_ = nullptr;
 static AudioCodec *audio_codec_ = nullptr;
 static AudioService *audio_service_ = nullptr;
 static CameraService *camera_service_ = nullptr;
@@ -71,177 +72,22 @@ void Application::Initialize() {
       });
 
   // ==========================================================
-  // STEP 1: Initialize I2C and Power Management
-  // M5Stack CoreS3: I2C_NUM_1, GPIO11=SCL, GPIO12=SDA
-  // Reference: esp-bsp/m5stack_core_s3/m5stack_core_s3.c
+  // STEP 1: Initialize Power Management (AXP2101 + AW9523)
+  // Reference: power/power_manager.cc
   // ==========================================================
-  ESP_LOGI(TAG, "STEP 1: Initializing I2C and power management...");
-  static i2c_master_bus_handle_t i2c_bus_handle = NULL;
-  static i2c_master_dev_handle_t aw9523_h = NULL;
-
-  const i2c_master_bus_config_t i2c_bus_config = {
-      .i2c_port = I2C_NUM_1,
-      .sda_io_num = GPIO_NUM_12,
-      .scl_io_num = GPIO_NUM_11,
-      .clk_source = I2C_CLK_SRC_DEFAULT,
-      .glitch_ignore_cnt = 7,
-      .flags =
-          {
-              .enable_internal_pullup = true,
-          },
-  };
-
-  esp_err_t i2c_ret = i2c_new_master_bus(&i2c_bus_config, &i2c_bus_handle);
-  if (i2c_ret == ESP_OK) {
-    ESP_LOGI(TAG, "I2C master bus initialized");
-
-    // ==========================================================
-    // Initialize AXP2101 Power Management for Camera
-    // Reference: Tasmota M5CoreS3.be, M5Unified Power_Class.cpp
-    // ALDO3 (0x94) = Camera power (3.3V)
-    // 0x90 = LDOS ON/OFF control
-    // ==========================================================
-    static i2c_master_dev_handle_t axp2101_h = NULL;
-    const i2c_device_config_t axp2101_config = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = 0x34, // BSP_AXP2101_ADDR
-        .scl_speed_hz = 400000,
-    };
-    esp_err_t axp_ret =
-        i2c_master_bus_add_device(i2c_bus_handle, &axp2101_config, &axp2101_h);
-    if (axp_ret == ESP_OK) {
-      ESP_LOGI(TAG, "AXP2101 power management initialized");
-      uint8_t data[2];
-
-      // LDOS ON/OFF control 0 - Enable all ALDOs
-      // Reference: M5Unified Power_Class.cpp line 61
-      data[0] = 0x90;
-      data[1] = 0xBF; // Enable ALDO1-4, DLDO1, DLDO2
-      i2c_master_transmit(axp2101_h, data, sizeof(data), 1000);
-
-      // ALDO1 = 1.8V (for AW88298 speaker amp)
-      data[0] = 0x92;
-      data[1] = 18 - 5; // 0x0D = 1.8V
-      i2c_master_transmit(axp2101_h, data, sizeof(data), 1000);
-
-      // ALDO2 = 3.3V (for ES7210 codec)
-      data[0] = 0x93;
-      data[1] = 33 - 5; // 0x1C = 3.3V
-      i2c_master_transmit(axp2101_h, data, sizeof(data), 1000);
-
-      // ALDO3 = 3.3V (for Camera!)
-      data[0] = 0x94;
-      data[1] = 33 - 5; // 0x1C = 3.3V
-      i2c_master_transmit(axp2101_h, data, sizeof(data), 1000);
-
-      // ALDO4 = 3.3V (for TF card)
-      data[0] = 0x95;
-      data[1] = 33 - 5; // 0x1C = 3.3V
-      i2c_master_transmit(axp2101_h, data, sizeof(data), 1000);
-
-      ESP_LOGI(TAG, "AXP2101 ALDO1-4 configured (Camera=ALDO3=3.3V)");
-    } else {
-      ESP_LOGW(TAG, "AXP2101 init failed: %s", esp_err_to_name(axp_ret));
-    }
-
-    // ==========================================================
-    // Initialize AW9523 GPIO Expander
-    // ==========================================================
-    const i2c_device_config_t aw9523_config = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = 0x58, // BSP_AW9523_ADDR
-        .scl_speed_hz = 400000,
-    };
-    esp_err_t aw_ret =
-        i2c_master_bus_add_device(i2c_bus_handle, &aw9523_config, &aw9523_h);
-    if (aw_ret == ESP_OK) {
-      ESP_LOGI(TAG, "AW9523 GPIO expander initialized");
-
-      // Enable Camera power via AW9523
-      // Reference: bsp_enable_feature(BSP_FEATURE_CAMERA) in m5stack_core_s3.c
-      // AW9523 Registers:
-      // 0x02/0x03 = P0/P1 Output state
-      // 0x04/0x05 = P0/P1 Config (direction: 0=output, 1=input)
-      // 0x11/0x13 = P0/P1 Mode control (push-pull mode)
-      uint8_t data[2];
-
-      // Reset AW9523 (write 0x00 to register 0x7F)
-      data[0] = 0x7F;
-      data[1] = 0x00;
-      i2c_master_transmit(aw9523_h, data, sizeof(data), 1000);
-      vTaskDelay(pdMS_TO_TICKS(10));
-
-      // Set P0 config: all pins as output (0 = output)
-      data[0] = 0x04;
-      data[1] = 0x00;
-      i2c_master_transmit(aw9523_h, data, sizeof(data), 1000);
-
-      // Set P1 config: all pins as output (0 = output)
-      data[0] = 0x05;
-      data[1] = 0x00;
-      i2c_master_transmit(aw9523_h, data, sizeof(data), 1000);
-
-      // Set AW9523 P0 to push-pull mode
-      data[0] = 0x11;
-      data[1] = 0x10;
-      i2c_master_transmit(aw9523_h, data, sizeof(data), 1000);
-
-      // Set P0 output value (from BSP default + speaker codec)
-      // bit 1 = default, bit 2 = speaker codec
-      data[0] = 0x02;
-      data[1] = 0b00000110; // 0x06
-      i2c_master_transmit(aw9523_h, data, sizeof(data), 1000);
-
-      // Set P1 output value (enable LCD and Camera)
-      // bit 0 = Camera, bit 1 = LCD, bit 5,7 = defaults from BSP (0xA0)
-      data[0] = 0x03;
-      data[1] = 0b10100011; // 0xA3: Camera(bit0) + LCD(bit1) + defaults(0xA0)
-      i2c_master_transmit(aw9523_h, data, sizeof(data), 1000);
-
-      // Debug: Read back AW9523 registers to verify
-      uint8_t read_buf[1];
-      uint8_t reg_addr;
-
-      reg_addr = 0x02; // P0 output
-      i2c_master_transmit_receive(aw9523_h, &reg_addr, 1, read_buf, 1, 1000);
-      ESP_LOGI(TAG, "AW9523 P0 output reg (0x02): 0x%02X", read_buf[0]);
-
-      reg_addr = 0x03; // P1 output
-      i2c_master_transmit_receive(aw9523_h, &reg_addr, 1, read_buf, 1, 1000);
-      ESP_LOGI(TAG, "AW9523 P1 output reg (0x03): 0x%02X", read_buf[0]);
-
-      reg_addr = 0x04; // P0 config
-      i2c_master_transmit_receive(aw9523_h, &reg_addr, 1, read_buf, 1, 1000);
-      ESP_LOGI(TAG, "AW9523 P0 config reg (0x04): 0x%02X", read_buf[0]);
-
-      reg_addr = 0x05; // P1 config
-      i2c_master_transmit_receive(aw9523_h, &reg_addr, 1, read_buf, 1, 1000);
-      ESP_LOGI(TAG, "AW9523 P1 config reg (0x05): 0x%02X", read_buf[0]);
-
-      ESP_LOGI(TAG, "Camera and LCD power enabled via AW9523");
-    } else {
-      ESP_LOGW(TAG, "AW9523 init failed: %s", esp_err_to_name(aw_ret));
-    }
+  ESP_LOGI(TAG, "STEP 1: Initializing power management...");
+  power_manager_ = new PowerManager();
+  if (power_manager_->Initialize()) {
+    // Enable Camera and Display power
+    power_manager_->EnableFeature(PowerFeature::kCamera);
+    power_manager_->EnableFeature(PowerFeature::kDisplay);
+    ESP_LOGI(TAG, "Power management initialized");
   } else {
-    ESP_LOGW(TAG, "I2C init: %s (may be already initialized)",
-             esp_err_to_name(i2c_ret));
+    ESP_LOGW(TAG, "Power management initialization failed, continuing...");
   }
 
-  // Small delay for power stabilization
+  // Power stabilization delay
   vTaskDelay(pdMS_TO_TICKS(100));
-
-  // ==========================================================
-  // DEBUG: Scan I2C bus to find connected devices
-  // ==========================================================
-  if (i2c_bus_handle != NULL) {
-    ESP_LOGI(TAG, "Scanning I2C bus for devices...");
-    for (uint8_t addr = 0x08; addr < 0x78; addr++) {
-      esp_err_t probe_ret = i2c_master_probe(i2c_bus_handle, addr, 100);
-      if (probe_ret == ESP_OK) {
-        ESP_LOGI(TAG, "I2C device found at address: 0x%02X", addr);
-      }
-    }
-  }
 
   // ==========================================================
   // STEP 2: Initialize Audio (I2S)
