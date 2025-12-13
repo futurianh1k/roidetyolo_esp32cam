@@ -5,13 +5,17 @@
 #include "camera/camera_service.h"
 #include "config.h"
 #include "display/display_service.h"
+#include "network/backend_client.h"
 #include "network/mqtt_client_wrapper.h"
 #include "network/wifi_manager.h"
 #include "power/power_manager.h"
+#include "status/status_reporter.h"
 #include <algorithm>
 #include <cJSON.h>
 #include <cstring>
 #include <esp_log.h>
+#include <esp_system.h>
+#include <string>
 
 #define TAG "Application"
 
@@ -24,6 +28,7 @@ static WiFiManager *wifi_manager_ = nullptr;
 static MQTTClient *mqtt_client_ = nullptr;
 static ASRService *asr_service_ = nullptr;
 static DisplayService *display_service_ = nullptr;
+static StatusReporter *status_reporter_ = nullptr;
 
 Application::Application() {
   event_group_ = xEventGroupCreate();
@@ -170,6 +175,18 @@ void Application::Initialize() {
     }
   }
 
+  // Initialize Status Reporter (상태 전송 서비스)
+  status_reporter_ = new StatusReporter();
+  std::string backend_url = "http://" + std::string(BACKEND_HOST) + ":" +
+                            std::to_string(BACKEND_PORT);
+  if (status_reporter_->Initialize(backend_url, DEVICE_DB_ID,
+                                   STATUS_REPORT_INTERVAL_MS)) {
+    ESP_LOGI(TAG, "Status reporter initialized (interval=%dms)",
+             STATUS_REPORT_INTERVAL_MS);
+  } else {
+    ESP_LOGW(TAG, "Status reporter initialization failed");
+  }
+
   // Initialize MQTT (after WiFi connected)
   mqtt_client_ = new MQTTClient();
   mqtt_client_->Initialize(MQTT_BROKER, MQTT_PORT, MQTT_USERNAME,
@@ -222,6 +239,9 @@ void Application::Initialize() {
             if (display_service_) {
               display_service_->ShowListening(true);
             }
+            if (status_reporter_) {
+              status_reporter_->SetMicStatus("active");
+            }
             Application::GetInstance().SetDeviceState(kDeviceStateListening);
           }
         } else if (command == "stop_asr" && asr_service_) {
@@ -229,7 +249,39 @@ void Application::Initialize() {
           if (display_service_) {
             display_service_->ShowListening(false);
           }
+          if (status_reporter_) {
+            status_reporter_->SetMicStatus("stopped");
+          }
           Application::GetInstance().SetDeviceState(kDeviceStateIdle);
+        }
+      }
+    }
+
+    // devices/{device_id}/control/camera 토픽 처리
+    if (topic.find("/control/camera") != std::string::npos) {
+      cJSON *action_item = cJSON_GetObjectItem(json, "action");
+
+      if (action_item && cJSON_IsString(action_item) && camera_service_) {
+        std::string action = action_item->valuestring;
+
+        if (action == "start") {
+          camera_service_->Start();
+          if (status_reporter_) {
+            status_reporter_->SetCameraStatus("active");
+          }
+          ESP_LOGI(TAG, "Camera started");
+        } else if (action == "stop") {
+          camera_service_->Stop();
+          if (status_reporter_) {
+            status_reporter_->SetCameraStatus("stopped");
+          }
+          ESP_LOGI(TAG, "Camera stopped");
+        } else if (action == "pause") {
+          camera_service_->Stop(); // 일시정지는 정지와 동일하게 처리
+          if (status_reporter_) {
+            status_reporter_->SetCameraStatus("paused");
+          }
+          ESP_LOGI(TAG, "Camera paused");
         }
       }
     }
@@ -238,37 +290,83 @@ void Application::Initialize() {
     if (topic.find("/control/microphone") != std::string::npos) {
       cJSON *action_item = cJSON_GetObjectItem(json, "action");
 
-      if (action_item && cJSON_IsString(action_item) && asr_service_) {
+      if (action_item && cJSON_IsString(action_item)) {
         std::string action = action_item->valuestring;
 
-        if (action == "start_asr") {
-          cJSON *language_item = cJSON_GetObjectItem(json, "language");
-          cJSON *ws_url_item = cJSON_GetObjectItem(json, "ws_url");
-          std::string language = "ko";
-          std::string ws_url = "";
+        if (action == "start" || action == "start_asr") {
+          if (asr_service_) {
+            cJSON *language_item = cJSON_GetObjectItem(json, "language");
+            cJSON *ws_url_item = cJSON_GetObjectItem(json, "ws_url");
+            std::string language = "ko";
+            std::string ws_url = "";
 
-          if (language_item && cJSON_IsString(language_item)) {
-            language = language_item->valuestring;
-          }
-
-          // ws_url이 제공되면 사용
-          if (ws_url_item && cJSON_IsString(ws_url_item)) {
-            ws_url = ws_url_item->valuestring;
-            ESP_LOGI(TAG, "Using provided ws_url: %s", ws_url.c_str());
-          }
-
-          if (asr_service_->StartSession(language, ws_url)) {
-            if (display_service_) {
-              display_service_->ShowListening(true);
+            if (language_item && cJSON_IsString(language_item)) {
+              language = language_item->valuestring;
             }
-            Application::GetInstance().SetDeviceState(kDeviceStateListening);
+
+            // ws_url이 제공되면 사용
+            if (ws_url_item && cJSON_IsString(ws_url_item)) {
+              ws_url = ws_url_item->valuestring;
+              ESP_LOGI(TAG, "Using provided ws_url: %s", ws_url.c_str());
+            }
+
+            if (asr_service_->StartSession(language, ws_url)) {
+              if (display_service_) {
+                display_service_->ShowListening(true);
+              }
+              if (status_reporter_) {
+                status_reporter_->SetMicStatus("active");
+              }
+              Application::GetInstance().SetDeviceState(kDeviceStateListening);
+            }
           }
-        } else if (action == "stop_asr") {
-          asr_service_->StopSession();
+        } else if (action == "stop" || action == "stop_asr") {
+          if (asr_service_) {
+            asr_service_->StopSession();
+          }
           if (display_service_) {
             display_service_->ShowListening(false);
           }
+          if (status_reporter_) {
+            status_reporter_->SetMicStatus("stopped");
+          }
           Application::GetInstance().SetDeviceState(kDeviceStateIdle);
+        } else if (action == "pause") {
+          // 일시정지 처리
+          if (status_reporter_) {
+            status_reporter_->SetMicStatus("paused");
+          }
+        }
+      }
+    }
+
+    // devices/{device_id}/control/speaker 토픽 처리
+    if (topic.find("/control/speaker") != std::string::npos) {
+      cJSON *action_item = cJSON_GetObjectItem(json, "action");
+
+      if (action_item && cJSON_IsString(action_item) && audio_service_) {
+        std::string action = action_item->valuestring;
+
+        if (action == "play") {
+          cJSON *audio_file_item = cJSON_GetObjectItem(json, "audio_file");
+          cJSON *volume_item = cJSON_GetObjectItem(json, "volume");
+
+          if (audio_file_item && cJSON_IsString(audio_file_item)) {
+            std::string audio_file = audio_file_item->valuestring;
+
+            // 볼륨 설정 (옵션)
+            if (volume_item && cJSON_IsNumber(volume_item)) {
+              int volume = volume_item->valueint;
+              audio_service_->SetVolume(volume);
+            }
+
+            // 오디오 파일 재생
+            // TODO: HTTP로 오디오 파일 다운로드 후 재생
+            ESP_LOGI(TAG, "Speaker play: %s", audio_file.c_str());
+          }
+        } else if (action == "stop") {
+          audio_service_->Stop();
+          ESP_LOGI(TAG, "Speaker stopped");
         }
       }
     }
@@ -276,16 +374,46 @@ void Application::Initialize() {
     // devices/{device_id}/control/display 토픽 처리
     if (topic.find("/control/display") != std::string::npos) {
       cJSON *action_item = cJSON_GetObjectItem(json, "action");
-      cJSON *text_item = cJSON_GetObjectItem(json, "text");
 
       if (action_item && cJSON_IsString(action_item) && display_service_) {
         std::string action = action_item->valuestring;
 
-        if (action == "show_text" && text_item && cJSON_IsString(text_item)) {
-          std::string text = text_item->valuestring;
-          display_service_->ShowText(text, 0); // 무한 표시
+        if (action == "show_text") {
+          cJSON *text_item = cJSON_GetObjectItem(json, "text");
+          if (text_item && cJSON_IsString(text_item)) {
+            std::string text = text_item->valuestring;
+            display_service_->ShowText(text, 0); // 무한 표시
+            ESP_LOGI(TAG, "Display text: %s", text.c_str());
+          }
+        } else if (action == "show_emoji") {
+          cJSON *emoji_item = cJSON_GetObjectItem(json, "emoji_id");
+          if (emoji_item && cJSON_IsString(emoji_item)) {
+            std::string emoji = emoji_item->valuestring;
+            display_service_->ShowText(emoji, 0);
+            ESP_LOGI(TAG, "Display emoji: %s", emoji.c_str());
+          }
         } else if (action == "clear") {
           display_service_->Clear();
+          ESP_LOGI(TAG, "Display cleared");
+        }
+      }
+    }
+
+    // devices/{device_id}/control/system 토픽 처리
+    if (topic.find("/control/system") != std::string::npos) {
+      cJSON *action_item = cJSON_GetObjectItem(json, "action");
+
+      if (action_item && cJSON_IsString(action_item)) {
+        std::string action = action_item->valuestring;
+
+        if (action == "restart") {
+          ESP_LOGI(TAG, "System restart requested");
+          if (display_service_) {
+            display_service_->ShowText("Restarting...", 2000);
+          }
+          // 2초 후 재시작
+          vTaskDelay(pdMS_TO_TICKS(2000));
+          esp_restart();
         }
       }
     }
@@ -411,11 +539,23 @@ void Application::HandleNetworkConnectedEvent() {
       ESP_LOGW(TAG, "MQTT connection failed, will retry");
     }
   }
+
+  // 상태 보고 서비스 시작
+  if (status_reporter_ && !status_reporter_->IsRunning()) {
+    status_reporter_->Start();
+    ESP_LOGI(TAG, "Status reporter started");
+  }
 }
 
 void Application::HandleNetworkDisconnectedEvent() {
   ESP_LOGI(TAG, "Network disconnected");
   SetDeviceState(kDeviceStateConnecting);
+
+  // 상태 보고 서비스 중지
+  if (status_reporter_ && status_reporter_->IsRunning()) {
+    status_reporter_->Stop();
+    ESP_LOGI(TAG, "Status reporter stopped");
+  }
 }
 
 void Application::HandleErrorEvent() {

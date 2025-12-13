@@ -21,12 +21,16 @@ set(SOURCES
     "network/wifi_manager.cc"
     "network/mqtt_client_wrapper.cc"
     "network/websocket_client.cc"
+    "network/backend_client.cc"
     
     # ASR module
     "asr/asr_service.cc"
     
     # Display module
     "display/display_service.cc"
+    
+    # Status module
+    "status/status_reporter.cc"
 )
 
 # Include directories
@@ -38,6 +42,7 @@ set(INCLUDE_DIRS
     "network"
     "display"
     "asr"
+    "status"
 )
 
 # Register component

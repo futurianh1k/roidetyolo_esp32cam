@@ -20,6 +20,10 @@
 #define DEVICE_NAME "Core S3 Camera"
 #define DEVICE_LOCATION "Office"
 
+// 장비 DB ID (백엔드에서 할당된 ID)
+// TODO: NVS에서 동적으로 읽도록 변경 필요
+#define DEVICE_DB_ID 1
+
 // MQTT 토픽
 #define TOPIC_CONTROL_CAMERA "devices/" DEVICE_ID "/control/camera"
 #define TOPIC_CONTROL_MICROPHONE "devices/" DEVICE_ID "/control/microphone"
