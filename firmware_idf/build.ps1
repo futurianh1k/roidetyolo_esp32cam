@@ -176,6 +176,15 @@ if ($Clean) {
     }
 }
 
+# build 디렉토리 정리 (set-target 전에 수동 삭제)
+$buildDir = Join-Path $PSScriptRoot "build"
+if (Test-Path $buildDir) {
+    Write-Host ""
+    Write-Host "[3] Cleaning build directory..." -ForegroundColor Yellow
+    Remove-Item -Recurse -Force $buildDir -ErrorAction SilentlyContinue
+    Write-Host "OK: Build directory cleaned" -ForegroundColor Green
+}
+
 # 타겟 설정
 Write-Host ""
 Write-Host "[4] Setting target: $Target" -ForegroundColor Yellow
