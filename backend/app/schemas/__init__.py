@@ -1,6 +1,7 @@
 """
 스키마 패키지
 """
+
 from app.schemas.user import (
     UserBase,
     UserCreate,
@@ -47,6 +48,13 @@ from app.schemas.asr_result import (
     ASRResultSearchRequest,
     ASRResultStatsResponse,
 )
+from app.schemas.alarm_history import (
+    AlarmHistoryBase,
+    AlarmHistoryCreate,
+    AlarmHistoryResponse,
+    AlarmHistoryListResponse,
+    AlarmHistoryFilter,
+)
 
 __all__ = [
     # User schemas
@@ -89,4 +97,10 @@ __all__ = [
     "ASRResultListResponse",
     "ASRResultSearchRequest",
     "ASRResultStatsResponse",
+    # Alarm History schemas
+    "AlarmHistoryBase",
+    "AlarmHistoryCreate",
+    "AlarmHistoryResponse",
+    "AlarmHistoryListResponse",
+    "AlarmHistoryFilter",
 ]

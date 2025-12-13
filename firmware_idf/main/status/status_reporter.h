@@ -3,9 +3,13 @@
  * @brief 장비 상태를 백엔드 서버에 주기적으로 보고하는 서비스
  *
  * 기능:
- * - 주기적인 상태 보고 (10초 기본)
+ * - 주기적인 상태 보고 (60초 기본)
  * - 시스템 정보 수집 (메모리, CPU 등)
  * - 컴포넌트 상태 수집 (카메라, 마이크 등)
+ *
+ * 구현 참고:
+ * - 타이머 콜백에서 직접 HTTP 요청하지 않음 (스택 오버플로우 방지)
+ * - 별도 태스크에서 실제 보고 작업 수행
  */
 
 #ifndef STATUS_REPORTER_H
@@ -13,6 +17,7 @@
 
 #include "../network/backend_client.h"
 #include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <freertos/timers.h>
 #include <functional>
@@ -100,6 +105,11 @@ private:
   // FreeRTOS 타이머
   TimerHandle_t report_timer_;
 
+  // 별도 태스크 (HTTP 작업용)
+  TaskHandle_t report_task_;
+  SemaphoreHandle_t report_semaphore_;
+  volatile bool task_should_exit_;
+
   // 콜백
   ReportCallback report_callback_;
 
@@ -109,9 +119,14 @@ private:
   DeviceStatusData CollectStatus();
 
   /**
-   * @brief 타이머 콜백 (static)
+   * @brief 타이머 콜백 (static) - 세마포어만 발행
    */
   static void TimerCallback(TimerHandle_t timer);
+
+  /**
+   * @brief 보고 태스크 (static) - 실제 HTTP 작업 수행
+   */
+  static void ReportTask(void *param);
 };
 
 #endif // STATUS_REPORTER_H

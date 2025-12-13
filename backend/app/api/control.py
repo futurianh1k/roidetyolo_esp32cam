@@ -386,6 +386,57 @@ async def control_speaker(
         # TODO: 로그인 수정 후 감사 로그 활성화
         logger.info(f"장비 {device.device_name}의 스피커 제어: {control.action}")
 
+        # 알람 이력 기록 (play, play_alarm, play_beep 액션만)
+        if control.action in ["play", "play_alarm", "play_beep"]:
+            try:
+                from app.models import AlarmHistory
+                import json
+
+                # 알람 타입 결정
+                if control.action == "play_alarm":
+                    alarm_type = "sound"
+                    alarm_subtype = control.alarm_type
+                    content = None
+                elif control.action == "play_beep":
+                    alarm_type = "sound"
+                    alarm_subtype = "beep"
+                    content = None
+                else:  # play
+                    alarm_type = "recorded"
+                    alarm_subtype = None
+                    content = audio_url or control.audio_file
+
+                # 파라미터 JSON 저장
+                params = {}
+                if control.volume:
+                    params["volume"] = control.volume
+                if control.frequency:
+                    params["frequency"] = control.frequency
+                if control.duration:
+                    params["duration"] = control.duration
+                if control.repeat:
+                    params["repeat"] = control.repeat
+
+                alarm_history = AlarmHistory(
+                    device_id=device_id,
+                    alarm_type=alarm_type,
+                    alarm_subtype=alarm_subtype,
+                    content=content,
+                    triggered_by="admin",  # TODO: current_user.role로 변경
+                    triggered_user_id=None,  # TODO: current_user.id로 변경
+                    parameters=json.dumps(params) if params else None,
+                    status="sent",
+                )
+                db.add(alarm_history)
+                db.commit()
+                logger.info(
+                    f"알람 이력 기록: device={device_id}, type={alarm_type}, "
+                    f"subtype={alarm_subtype}"
+                )
+            except Exception as e:
+                logger.warning(f"알람 이력 기록 실패 (계속 진행): {e}")
+                # 이력 기록 실패해도 API는 성공 응답
+
         # 액션별 응답 메시지
         messages = {
             "play": f"오디오 재생 명령을 전송했습니다",

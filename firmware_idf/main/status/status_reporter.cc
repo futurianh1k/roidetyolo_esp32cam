@@ -1,6 +1,10 @@
 /**
  * @file status_reporter.cc
  * @brief 장비 상태를 백엔드 서버에 주기적으로 보고하는 서비스 구현
+ *
+ * 구현 참고:
+ * - 타이머 콜백에서 직접 HTTP 요청하지 않음 (스택 오버플로우 방지)
+ * - 타이머는 세마포어만 발행, 별도 태스크에서 실제 HTTP 작업 수행
  */
 
 #include "status_reporter.h"
@@ -9,11 +13,13 @@
 #include <esp_timer.h>
 
 #define TAG "StatusReporter"
+#define REPORT_TASK_STACK_SIZE 8192 // HTTP 작업에 충분한 스택
 
 StatusReporter::StatusReporter()
-    : report_interval_ms_(10000), is_running_(false), initialized_(false),
+    : report_interval_ms_(60000), is_running_(false), initialized_(false),
       camera_status_("stopped"), mic_status_("stopped"), report_timer_(nullptr),
-      report_callback_(nullptr) {}
+      report_task_(nullptr), report_semaphore_(nullptr),
+      task_should_exit_(false), report_callback_(nullptr) {}
 
 StatusReporter::~StatusReporter() { Stop(); }
 
@@ -50,6 +56,27 @@ void StatusReporter::Start() {
     return;
   }
 
+  // 세마포어 생성
+  report_semaphore_ = xSemaphoreCreateBinary();
+  if (report_semaphore_ == nullptr) {
+    ESP_LOGE(TAG, "Failed to create semaphore");
+    return;
+  }
+
+  // 보고 태스크 생성 (HTTP 작업용, 충분한 스택)
+  task_should_exit_ = false;
+  BaseType_t task_created =
+      xTaskCreate(ReportTask, "status_report", REPORT_TASK_STACK_SIZE, this,
+                  tskIDLE_PRIORITY + 2, // 낮은 우선순위
+                  &report_task_);
+
+  if (task_created != pdPASS) {
+    ESP_LOGE(TAG, "Failed to create report task");
+    vSemaphoreDelete(report_semaphore_);
+    report_semaphore_ = nullptr;
+    return;
+  }
+
   // FreeRTOS 소프트웨어 타이머 생성
   report_timer_ =
       xTimerCreate("status_timer", pdMS_TO_TICKS(report_interval_ms_),
@@ -59,6 +86,11 @@ void StatusReporter::Start() {
 
   if (report_timer_ == nullptr) {
     ESP_LOGE(TAG, "Failed to create timer");
+    task_should_exit_ = true;
+    xSemaphoreGive(report_semaphore_); // 태스크 종료 신호
+    vTaskDelay(pdMS_TO_TICKS(100));
+    vSemaphoreDelete(report_semaphore_);
+    report_semaphore_ = nullptr;
     return;
   }
 
@@ -67,14 +99,20 @@ void StatusReporter::Start() {
     ESP_LOGE(TAG, "Failed to start timer");
     xTimerDelete(report_timer_, 0);
     report_timer_ = nullptr;
+    task_should_exit_ = true;
+    xSemaphoreGive(report_semaphore_);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    vSemaphoreDelete(report_semaphore_);
+    report_semaphore_ = nullptr;
     return;
   }
 
   is_running_ = true;
-  ESP_LOGI(TAG, "Started with interval %d ms", report_interval_ms_);
+  ESP_LOGI(TAG, "Started with interval %d ms (task stack: %d bytes)",
+           report_interval_ms_, REPORT_TASK_STACK_SIZE);
 
-  // 즉시 첫 번째 보고 실행
-  ReportNow();
+  // 즉시 첫 번째 보고 실행 (세마포어로 신호)
+  xSemaphoreGive(report_semaphore_);
 }
 
 void StatusReporter::Stop() {
@@ -82,10 +120,29 @@ void StatusReporter::Stop() {
     return;
   }
 
+  // 타이머 중지 및 삭제
   if (report_timer_ != nullptr) {
-    xTimerStop(report_timer_, 0);
-    xTimerDelete(report_timer_, 0);
+    xTimerStop(report_timer_, portMAX_DELAY);
+    xTimerDelete(report_timer_, portMAX_DELAY);
     report_timer_ = nullptr;
+  }
+
+  // 태스크 종료 신호
+  if (report_semaphore_ != nullptr) {
+    task_should_exit_ = true;
+    xSemaphoreGive(report_semaphore_);
+
+    // 태스크 종료 대기
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    // 태스크가 아직 살아있으면 강제 삭제
+    if (report_task_ != nullptr) {
+      vTaskDelete(report_task_);
+      report_task_ = nullptr;
+    }
+
+    vSemaphoreDelete(report_semaphore_);
+    report_semaphore_ = nullptr;
   }
 
   is_running_ = false;
@@ -176,7 +233,31 @@ void StatusReporter::TimerCallback(TimerHandle_t timer) {
   // 타이머 ID에서 StatusReporter 포인터 가져오기
   StatusReporter *reporter =
       static_cast<StatusReporter *>(pvTimerGetTimerID(timer));
-  if (reporter) {
-    reporter->ReportNow();
+
+  if (reporter && reporter->report_semaphore_) {
+    // 세마포어만 발행 (타이머 콜백에서 HTTP 작업 금지!)
+    xSemaphoreGive(reporter->report_semaphore_);
   }
+}
+
+void StatusReporter::ReportTask(void *param) {
+  StatusReporter *reporter = static_cast<StatusReporter *>(param);
+
+  ESP_LOGI(TAG, "Report task started");
+
+  while (!reporter->task_should_exit_) {
+    // 세마포어 대기 (타이머 또는 수동 트리거)
+    if (xSemaphoreTake(reporter->report_semaphore_, portMAX_DELAY) == pdTRUE) {
+      if (reporter->task_should_exit_) {
+        break;
+      }
+
+      // 실제 보고 수행 (이 태스크는 충분한 스택을 가짐)
+      reporter->ReportNow();
+    }
+  }
+
+  ESP_LOGI(TAG, "Report task exiting");
+  reporter->report_task_ = nullptr;
+  vTaskDelete(nullptr);
 }

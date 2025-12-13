@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.database import init_db
-from app.api import auth, users, devices, control, audio, websocket, asr
+from app.api import auth, users, devices, control, audio, websocket, asr, alarm_history
 from app.services import mqtt_service
 from app.services.device_monitor import device_monitor
 from app.utils.logger import logger
@@ -97,6 +97,7 @@ app.include_router(control.router)
 app.include_router(audio.router)
 app.include_router(websocket.router)
 app.include_router(asr.router)  # ASR (음성인식) API
+app.include_router(alarm_history.router)  # 알람 이력 API
 
 
 @app.get("/")
