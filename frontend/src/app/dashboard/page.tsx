@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { authAPI, devicesAPI, Device } from '@/lib/api';
+import { useQuery, useQueries } from '@tanstack/react-query';
+import { authAPI, devicesAPI, Device, DeviceStatus } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import toast from 'react-hot-toast';
 import {
@@ -86,6 +86,37 @@ export default function DashboardPage() {
       console.error('장비 목록 조회 에러:', devicesError);
     }
   }, [devicesError]);
+
+  // 각 장비의 최신 상태 조회
+  const deviceStatusQueries = useQueries({
+    queries: (devicesData?.devices || []).map((device) => ({
+      queryKey: ['deviceStatus', device.id],
+      queryFn: async () => {
+        try {
+          const { data } = await devicesAPI.getLatestStatus(device.id);
+          return { deviceId: device.id, status: data };
+        } catch (error: any) {
+          // 상태 정보가 없을 경우 에러 무시 (장비가 아직 연결 안됨)
+          if (error.response?.status === 404) {
+            return { deviceId: device.id, status: null };
+          }
+          throw error;
+        }
+      },
+      enabled: mounted && !!devicesData?.devices?.length,
+      refetchInterval: 10000, // 10초마다 자동 갱신
+      retry: 1,
+      staleTime: 5000, // 5초 동안 캐시 유지
+    })),
+  });
+
+  // 장비 ID별 상태 맵 생성
+  const deviceStatusMap: Record<number, DeviceStatus | null> = {};
+  deviceStatusQueries.forEach((query) => {
+    if (query.data) {
+      deviceStatusMap[query.data.deviceId] = query.data.status;
+    }
+  });
 
   const handleLogout = async () => {
     try {
@@ -223,6 +254,7 @@ export default function DashboardPage() {
                 <DeviceCard
                   key={device.id}
                   device={device}
+                  status={deviceStatusMap[device.id]}
                   onClick={() => router.push(`/devices/${device.id}`)}
                 />
               ))}

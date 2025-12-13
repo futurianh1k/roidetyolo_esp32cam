@@ -1,0 +1,9 @@
+# E2E Test Dependencies
+selenium==4.15.2
+webdriver-manager==4.0.1
+pytest==7.4.3
+pytest-selenium==4.0.2
+pytest-html==4.1.1
+pytest-xdist==3.5.0
+python-dotenv==1.0.0
+allure-pytest==2.13.2

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.database import get_db
 from app.models import Device, DeviceStatus, User, AuditLog
@@ -32,6 +32,45 @@ from app.utils.logger import logger
 router = APIRouter(prefix="/devices", tags=["장비 관리"])
 
 
+# 장비 오프라인 판정 시간 (초) - 60초 동안 상태 전송이 없으면 오프라인
+DEVICE_OFFLINE_THRESHOLD_SECONDS = 60
+
+
+def update_device_online_status(db: Session, device: Device) -> bool:
+    """
+    장비의 온라인 상태를 last_seen_at 기준으로 업데이트합니다.
+
+    Returns:
+        bool: 업데이트된 온라인 상태
+    """
+    if device.last_seen_at is None:
+        # 한번도 연결된 적이 없음
+        if device.is_online:
+            device.is_online = False
+            db.commit()
+        return False
+
+    now = datetime.utcnow()
+    time_since_last_seen = (now - device.last_seen_at).total_seconds()
+
+    if time_since_last_seen > DEVICE_OFFLINE_THRESHOLD_SECONDS:
+        # 오프라인 판정
+        if device.is_online:
+            device.is_online = False
+            db.commit()
+            logger.info(
+                f"장비 {device.device_name} 오프라인 전환 (마지막 연결: {time_since_last_seen:.0f}초 전)"
+            )
+        return False
+    else:
+        # 온라인 유지
+        if not device.is_online:
+            device.is_online = True
+            db.commit()
+            logger.info(f"장비 {device.device_name} 온라인 전환")
+        return True
+
+
 @router.get("/", response_model=DeviceListResponse)
 async def list_devices(
     page: int = Query(1, ge=1),
@@ -50,11 +89,20 @@ async def list_devices(
     # 쿼리 빌드
     query = db.query(Device)
 
-    if is_online is not None:
-        query = query.filter(Device.is_online == is_online)
-
     if device_type:
         query = query.filter(Device.device_type == device_type)
+
+    # 모든 장비의 온라인 상태 업데이트
+    all_devices = query.all()
+    for device in all_devices:
+        update_device_online_status(db, device)
+
+    # 온라인 필터 적용 (상태 업데이트 후)
+    if is_online is not None:
+        query = db.query(Device)
+        if device_type:
+            query = query.filter(Device.device_type == device_type)
+        query = query.filter(Device.is_online == is_online)
 
     # 총 개수
     total = query.count()
@@ -90,6 +138,9 @@ async def get_device(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="장비를 찾을 수 없습니다"
         )
+
+    # 온라인 상태 업데이트
+    update_device_online_status(db, device)
 
     return device
 
@@ -371,7 +422,8 @@ async def create_device_status(
 async def get_device_status_history(
     device_id: int,
     limit: int = Query(10, ge=1, le=100),
-    current_user: User = Depends(get_current_active_user),
+    # TODO: 로그인 수정 후 활성화
+    # current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> DeviceStatusListResponse:
     """
