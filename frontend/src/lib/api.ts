@@ -82,6 +82,7 @@ export interface Device {
   last_seen_at: string | null;
   location: string | null;
   description: string | null;
+  status_report_interval: number;  // 상태 보고 주기 (초)
 }
 
 export interface DeviceStatus {
@@ -208,11 +209,41 @@ export const controlAPI = {
       volume: volume 
     }),
   
+  playAlarm: (
+    deviceId: number,
+    alarmType: 'beep' | 'alert' | 'notification' | 'emergency',
+    repeat: number = 1
+  ) =>
+    api.post(`/control/devices/${deviceId}/speaker`, {
+      action: 'play_alarm',
+      alarm_type: alarmType,
+      repeat,
+    }),
+  
+  playBeep: (
+    deviceId: number,
+    frequency: number = 1000,
+    duration: number = 200,
+    volume: number = 80
+  ) =>
+    api.post(`/control/devices/${deviceId}/speaker`, {
+      action: 'play_beep',
+      frequency,
+      duration,
+      volume,
+    }),
+  
   display: (deviceId: number, action: 'show_text' | 'show_emoji' | 'clear', content?: string, emojiId?: string) =>
     api.post(`/control/devices/${deviceId}/display`, { action, content, emoji_id: emojiId }),
   
-  system: (deviceId: number, action: 'restart') =>
+  system: (deviceId: number, action: 'restart' | 'wake' | 'sleep') =>
     api.post(`/control/devices/${deviceId}/system`, { action }),
+  
+  setReportInterval: (deviceId: number, intervalSeconds: number) =>
+    api.post(`/control/devices/${deviceId}/system`, {
+      action: 'set_interval',
+      interval: intervalSeconds,
+    }),
 };
 
 // ASR (음성인식) 타입 정의

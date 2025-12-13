@@ -73,6 +73,24 @@ public:
   bool IsConnected() const { return is_connected_; }
 
   /**
+   * @brief device_id 문자열로 DB ID 조회
+   * @param device_id 장비 고유 식별자 문자열 (예: "core_s3_001")
+   * @param out_db_id 조회된 DB ID 반환
+   * @return 조회 성공 여부
+   */
+  bool LookupDeviceDbId(const std::string &device_id, int &out_db_id);
+
+  /**
+   * @brief 현재 설정된 device DB ID 반환
+   */
+  int GetDeviceId() const { return device_id_; }
+
+  /**
+   * @brief device DB ID 설정 (런타임에 변경 가능)
+   */
+  void SetDeviceId(int device_id) { device_id_ = device_id; }
+
+  /**
    * @brief 콜백 타입 정의
    */
   using ResponseCallback =

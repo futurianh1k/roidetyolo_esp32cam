@@ -21,8 +21,8 @@
 #define DEVICE_LOCATION "Office"
 
 // 장비 DB ID (백엔드에서 할당된 ID)
-// TODO: NVS에서 동적으로 읽도록 변경 필요
-#define DEVICE_DB_ID 1
+// Note: 런타임에 NVS 또는 백엔드에서 자동으로 조회됨
+// DEVICE_DB_ID는 더 이상 하드코딩하지 않음
 
 // MQTT 토픽
 #define TOPIC_CONTROL_CAMERA "devices/" DEVICE_ID "/control/camera"
@@ -47,7 +47,7 @@
 #define I2S_CHANNELS 1
 
 // 상태 보고 설정
-#define STATUS_REPORT_INTERVAL_MS 10000
+#define STATUS_REPORT_INTERVAL_MS 60000 // 기본값 60초 (1분)
 
 // 버튼 설정
 #define BUTTON_LONG_PRESS_MS 1000  // 롱프레스 감지 시간

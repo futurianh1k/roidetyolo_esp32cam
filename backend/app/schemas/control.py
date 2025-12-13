@@ -75,12 +75,49 @@ class MicrophoneControlRequest(BaseModel):
 
 
 class SpeakerControlRequest(BaseModel):
-    """스피커 제어 요청"""
+    """
+    스피커 제어 요청
 
-    action: Literal["play", "stop"]
+    액션:
+    - play: 오디오 파일 재생 (audio_url 또는 audio_file 필요)
+    - play_alarm: 내장 알람음 재생 (alarm_type 필요)
+    - play_beep: 비프음 생성 및 재생 (frequency, duration 필요)
+    - stop: 재생 중지
+    """
+
+    action: Literal["play", "play_alarm", "play_beep", "stop"]
     audio_url: Optional[str] = Field(None, max_length=500)
     audio_file: Optional[str] = Field(None, max_length=200)
     volume: Optional[int] = Field(None, ge=0, le=100)
+
+    # play_alarm용 필드
+    alarm_type: Optional[Literal["beep", "alert", "notification", "emergency"]] = Field(
+        None,
+        description="알람 타입: beep(짧은비프), alert(경고), notification(알림), emergency(긴급)",
+    )
+    repeat: Optional[int] = Field(None, ge=1, le=10, description="반복 횟수 (1-10)")
+
+    # play_beep용 필드
+    frequency: Optional[int] = Field(
+        None, ge=200, le=5000, description="주파수 (Hz, 200-5000)"
+    )
+    duration: Optional[int] = Field(
+        None, ge=50, le=5000, description="지속 시간 (ms, 50-5000)"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "examples": [
+                {"action": "play_alarm", "alarm_type": "emergency", "repeat": 2},
+                {
+                    "action": "play_beep",
+                    "frequency": 1000,
+                    "duration": 200,
+                    "volume": 80,
+                },
+                {"action": "play", "audio_file": "alert.wav", "volume": 100},
+            ]
+        }
 
 
 class DisplayControlRequest(BaseModel):
@@ -92,9 +129,23 @@ class DisplayControlRequest(BaseModel):
 
 
 class SystemControlRequest(BaseModel):
-    """시스템 제어 요청"""
+    """
+    시스템 제어 요청
 
-    action: Literal["restart"]
+    액션:
+    - restart: 장비 재시작
+    - wake: 장비 깨우기
+    - sleep: 절전 모드 전환
+    - set_interval: 상태 보고 주기 변경 (interval 필수)
+    """
+
+    action: Literal["restart", "wake", "sleep", "set_interval"]
+    interval: Optional[int] = Field(
+        None,
+        ge=10,
+        le=3600,
+        description="상태 보고 주기 (초). set_interval 액션 시 필수. 최소 10초, 최대 3600초",
+    )
 
 
 class ControlResponse(BaseModel):

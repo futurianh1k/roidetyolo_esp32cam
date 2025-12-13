@@ -24,6 +24,9 @@ import {
   Edit2,
   Check,
   X,
+  Power,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import DeviceControl from '@/components/DeviceControl';
 import DeviceStatus from '@/components/DeviceStatus';
@@ -39,6 +42,8 @@ export default function DeviceDetailPage() {
   const { isAuthenticated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [isWaking, setIsWaking] = useState(false);
+  const [isSleeping, setIsSleeping] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [recognitionResults, setRecognitionResults] = useState<RecognitionResult[]>([]);
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
@@ -200,6 +205,91 @@ export default function DeviceDetailPage() {
     }
   };
 
+  const handleWake = async () => {
+    setIsWaking(true);
+    try {
+      await controlAPI.system(deviceId, 'wake');
+      toast.success('깨우기 명령을 전송했습니다. 장비가 연결되면 자동으로 온라인 상태가 됩니다.');
+      
+      // 10초 후 상태 새로고침 (장비가 깨어날 시간 필요)
+      setTimeout(() => {
+        refetchDevice();
+        refetchStatus();
+        setIsWaking(false);
+      }, 10000);
+    } catch (error: any) {
+      toast.error('깨우기 명령 전송에 실패했습니다');
+      setIsWaking(false);
+    }
+  };
+
+  // 알람음 재생 핸들러
+  const [isPlayingAlarm, setIsPlayingAlarm] = useState(false);
+  
+  const handlePlayAlarm = async (alarmType: 'beep' | 'alert' | 'notification' | 'emergency') => {
+    if (!device?.is_online) {
+      toast.error('장비가 오프라인 상태입니다');
+      return;
+    }
+    
+    setIsPlayingAlarm(true);
+    try {
+      await controlAPI.playAlarm(deviceId, alarmType, 1);
+      toast.success(`${alarmType} 알람 재생 명령을 전송했습니다`);
+    } catch (error: any) {
+      toast.error('알람 재생에 실패했습니다');
+    } finally {
+      setTimeout(() => setIsPlayingAlarm(false), 1000);
+    }
+  };
+
+  // 상태 보고 주기 변경 핸들러
+  const [isChangingInterval, setIsChangingInterval] = useState(false);
+  
+  const handleChangeInterval = async (intervalSeconds: number) => {
+    if (!device?.is_online) {
+      toast.error('장비가 오프라인 상태입니다');
+      return;
+    }
+    
+    setIsChangingInterval(true);
+    try {
+      await controlAPI.setReportInterval(deviceId, intervalSeconds);
+      toast.success(`상태 보고 주기를 ${intervalSeconds}초로 변경했습니다`);
+      refetchDevice();
+    } catch (error: any) {
+      toast.error('보고 주기 변경에 실패했습니다');
+    } finally {
+      setIsChangingInterval(false);
+    }
+  };
+
+  const handleSleep = async () => {
+    if (!device?.is_online) {
+      toast.error('장비가 이미 오프라인 상태입니다');
+      return;
+    }
+
+    const confirmed = window.confirm('장비를 절전 모드로 전환하시겠습니까?\n절전 모드에서는 버튼을 눌러 깨울 수 있습니다.');
+    if (!confirmed) return;
+
+    setIsSleeping(true);
+    try {
+      await controlAPI.system(deviceId, 'sleep');
+      toast.success('절전 모드 명령을 전송했습니다');
+      
+      // 3초 후 상태 새로고침
+      setTimeout(() => {
+        refetchDevice();
+        refetchStatus();
+        setIsSleeping(false);
+      }, 3000);
+    } catch (error) {
+      toast.error('절전 모드 명령 전송에 실패했습니다');
+      setIsSleeping(false);
+    }
+  };
+
   const handleDelete = async () => {
     const confirmed = window.confirm(
       `장비 "${device?.device_name}"를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`
@@ -324,6 +414,99 @@ export default function DeviceDetailPage() {
                 <Wifi className="h-4 w-4 mr-1" />
                 {device.is_online ? '온라인' : '오프라인'}
               </div>
+              {/* Wake Up 버튼 - 오프라인일 때만 표시 */}
+              {!device.is_online && (
+                <button
+                  onClick={handleWake}
+                  disabled={isWaking}
+                  className="inline-flex items-center px-4 py-2 border border-green-300 rounded-lg text-sm font-medium text-green-700 bg-white hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="장비 깨우기"
+                >
+                  {isWaking ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-700 mr-2"></div>
+                      깨우는 중...
+                    </>
+                  ) : (
+                    <>
+                      <Sun className="h-4 w-4 mr-2" />
+                      깨우기
+                    </>
+                  )}
+                </button>
+              )}
+              {/* Sleep 버튼 - 온라인일 때만 표시 */}
+              {device.is_online && (
+                <button
+                  onClick={handleSleep}
+                  disabled={isSleeping}
+                  className="inline-flex items-center px-4 py-2 border border-indigo-300 rounded-lg text-sm font-medium text-indigo-700 bg-white hover:bg-indigo-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="절전 모드"
+                >
+                  {isSleeping ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-700 mr-2"></div>
+                      전환 중...
+                    </>
+                  ) : (
+                    <>
+                      <Moon className="h-4 w-4 mr-2" />
+                      절전
+                    </>
+                  )}
+                </button>
+              )}
+              {/* 상태 보고 주기 설정 */}
+              {device.is_online && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">보고 주기:</span>
+                  <select
+                    value={device.status_report_interval || 60}
+                    onChange={(e) => handleChangeInterval(Number(e.target.value))}
+                    disabled={isChangingInterval}
+                    className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                    title="상태 보고 주기 변경"
+                  >
+                    <option value={10}>10초</option>
+                    <option value={30}>30초</option>
+                    <option value={60}>1분</option>
+                    <option value={120}>2분</option>
+                    <option value={300}>5분</option>
+                    <option value={600}>10분</option>
+                    <option value={1800}>30분</option>
+                    <option value={3600}>1시간</option>
+                  </select>
+                </div>
+              )}
+              {/* 알람 버튼들 */}
+              {device.is_online && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handlePlayAlarm('beep')}
+                    disabled={isPlayingAlarm}
+                    className="inline-flex items-center px-3 py-2 border border-orange-300 rounded-l-lg text-sm font-medium text-orange-700 bg-white hover:bg-orange-50 disabled:opacity-50"
+                    title="비프음"
+                  >
+                    <Volume2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handlePlayAlarm('alert')}
+                    disabled={isPlayingAlarm}
+                    className="inline-flex items-center px-3 py-2 border-y border-orange-300 text-sm font-medium text-orange-700 bg-white hover:bg-orange-50 disabled:opacity-50"
+                    title="경고음"
+                  >
+                    ⚠️
+                  </button>
+                  <button
+                    onClick={() => handlePlayAlarm('emergency')}
+                    disabled={isPlayingAlarm}
+                    className="inline-flex items-center px-3 py-2 border border-red-400 rounded-r-lg text-sm font-medium text-red-700 bg-white hover:bg-red-50 disabled:opacity-50"
+                    title="긴급 알람"
+                  >
+                    🚨
+                  </button>
+                </div>
+              )}
               <button
                 onClick={handleRestart}
                 disabled={!device.is_online || isRestarting}

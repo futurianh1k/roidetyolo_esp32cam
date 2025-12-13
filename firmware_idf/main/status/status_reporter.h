@@ -67,6 +67,19 @@ public:
   void SetMicStatus(const std::string &status) { mic_status_ = status; }
 
   /**
+   * @brief 보고 주기 변경 (런타임)
+   * @param interval_ms 새 주기 (밀리초)
+   * @return 성공 여부
+   */
+  bool SetInterval(uint32_t interval_ms);
+
+  /**
+   * @brief 현재 보고 주기 조회
+   * @return 현재 주기 (밀리초)
+   */
+  uint32_t GetInterval() const { return report_interval_ms_; }
+
+  /**
    * @brief 상태 보고 콜백 설정
    */
   using ReportCallback = std::function<void(bool success)>;

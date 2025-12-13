@@ -13,6 +13,7 @@ set(SOURCES
     # Audio module
     "audio/audio_service.cc"
     "audio/audio_codec.cc"
+    "audio/wav_player.cc"
     
     # Camera module
     "camera/camera_service.cc"
@@ -64,5 +65,6 @@ idf_component_register(
         esp_event
         esp_netif
         json
+        spiffs
 )
 

@@ -15,7 +15,6 @@
 #include <esp_http_client.h>
 #include <esp_log.h>
 
-
 #define TAG "BackendClient"
 
 // HTTP 응답 버퍼 최대 크기
@@ -250,6 +249,49 @@ bool BackendClient::HttpPost(const std::string &path,
   free(response_buffer);
 
   return success;
+}
+
+bool BackendClient::LookupDeviceDbId(const std::string &device_id,
+                                     int &out_db_id) {
+  // 백엔드 API: GET /devices/?device_id=core_s3_001
+  std::string path = "/devices/?device_id=" + device_id;
+  std::string response;
+
+  if (!HttpGet(path, response)) {
+    ESP_LOGE(TAG, "Failed to lookup device: %s", device_id.c_str());
+    return false;
+  }
+
+  // JSON 파싱
+  cJSON *json = cJSON_Parse(response.c_str());
+  if (!json) {
+    ESP_LOGE(TAG, "Failed to parse device lookup response");
+    return false;
+  }
+
+  // devices 배열에서 첫 번째 장비의 id 추출
+  cJSON *devices = cJSON_GetObjectItem(json, "devices");
+  if (!devices || !cJSON_IsArray(devices) || cJSON_GetArraySize(devices) == 0) {
+    ESP_LOGE(TAG, "Device not found: %s", device_id.c_str());
+    cJSON_Delete(json);
+    return false;
+  }
+
+  cJSON *first_device = cJSON_GetArrayItem(devices, 0);
+  cJSON *id_item = cJSON_GetObjectItem(first_device, "id");
+
+  if (!id_item || !cJSON_IsNumber(id_item)) {
+    ESP_LOGE(TAG, "Invalid device ID in response");
+    cJSON_Delete(json);
+    return false;
+  }
+
+  out_db_id = id_item->valueint;
+  ESP_LOGI(TAG, "Device lookup success: %s -> DB ID %d", device_id.c_str(),
+           out_db_id);
+
+  cJSON_Delete(json);
+  return true;
 }
 
 bool BackendClient::HttpGet(const std::string &path, std::string &response) {

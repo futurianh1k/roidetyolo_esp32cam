@@ -216,7 +216,11 @@ async def control_speaker(
     스피커 제어
 
     권한: OPERATOR 이상
-    액션: play (audio_url 필요), stop
+    액션:
+    - play: 오디오 파일 재생 (audio_url 또는 audio_file 필요)
+    - play_alarm: 내장 알람음 재생 (alarm_type: beep|alert|notification|emergency)
+    - play_beep: 비프음 재생 (frequency, duration 필요)
+    - stop: 재생 중지
     """
     # 장비 확인
     device = db.query(Device).filter(Device.id == device_id).first()
@@ -230,11 +234,25 @@ async def control_speaker(
             status_code=status.HTTP_400_BAD_REQUEST, detail="장비가 오프라인 상태입니다"
         )
 
-    # play 액션 시 audio_file 또는 audio_url 필수
+    # 액션별 필수 파라미터 검증
     if control.action == "play" and not control.audio_file and not control.audio_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="play 액션은 audio_file 또는 audio_url이 필요합니다",
+        )
+
+    if control.action == "play_alarm" and not control.alarm_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="play_alarm 액션은 alarm_type이 필요합니다 (beep|alert|notification|emergency)",
+        )
+
+    if control.action == "play_beep" and (
+        not control.frequency or not control.duration
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="play_beep 액션은 frequency와 duration이 필요합니다",
         )
 
     try:
@@ -254,11 +272,11 @@ async def control_speaker(
             # 1. 설정 파일의 BACKEND_HOST 사용 (우선)
             # 2. localhost인 경우 자동 감지 시도
             backend_host = settings.BACKEND_HOST
-            
+
             # localhost인 경우 자동으로 실제 IP 주소 찾기
             if backend_host in ["localhost", "127.0.0.1"]:
                 detected_host = None
-                
+
                 # 방법 1: Request의 Host 헤더 사용 (프론트엔드에서 접근한 주소)
                 if request:
                     host_header = request.headers.get("Host", "")
@@ -267,10 +285,13 @@ async def control_speaker(
                         detected_host = host_header.split(":")[0]
                         # IP 주소 형식인지 확인
                         import re
-                        if re.match(r'^\d+\.\d+\.\d+\.\d+$', detected_host):
+
+                        if re.match(r"^\d+\.\d+\.\d+\.\d+$", detected_host):
                             backend_host = detected_host
-                            logger.info(f"✅ Host 헤더에서 백엔드 IP 자동 감지: {backend_host}")
-                
+                            logger.info(
+                                f"✅ Host 헤더에서 백엔드 IP 자동 감지: {backend_host}"
+                            )
+
                 # 방법 2: 장비 IP와 같은 서브넷의 백엔드 IP 추론
                 if backend_host in ["localhost", "127.0.0.1"] and device.ip_address:
                     # 장비 IP의 서브넷에서 백엔드 IP 추론
@@ -279,6 +300,7 @@ async def control_speaker(
                     if len(ip_parts) == 2:
                         # 네트워크 인터페이스에서 실제 IP 찾기
                         import socket
+
                         try:
                             # 장비와 통신 가능한 네트워크 인터페이스의 IP 찾기
                             # 같은 서브넷의 IP 주소 사용
@@ -288,10 +310,13 @@ async def control_speaker(
                                 s.connect((device.ip_address, 80))
                                 local_ip = s.getsockname()[0]
                                 s.close()
-                                
+
                                 # 같은 서브넷인지 확인
                                 local_parts = local_ip.rsplit(".", 1)
-                                if len(local_parts) == 2 and local_parts[0] == ip_parts[0]:
+                                if (
+                                    len(local_parts) == 2
+                                    and local_parts[0] == ip_parts[0]
+                                ):
                                     backend_host = local_ip
                                     logger.info(
                                         f"✅ 네트워크 인터페이스에서 백엔드 IP 자동 감지: {backend_host} "
@@ -314,8 +339,10 @@ async def control_speaker(
                                     f".env 파일에 BACKEND_HOST를 설정하세요."
                                 )
                         except Exception as e:
-                            logger.warning(f"⚠️ IP 자동 감지 실패: {e}. .env 파일에 BACKEND_HOST를 설정하세요.")
-                
+                            logger.warning(
+                                f"⚠️ IP 자동 감지 실패: {e}. .env 파일에 BACKEND_HOST를 설정하세요."
+                            )
+
                 # 여전히 localhost인 경우 경고
                 if backend_host in ["localhost", "127.0.0.1"]:
                     logger.error(
@@ -323,7 +350,7 @@ async def control_speaker(
                         f".env 파일에 BACKEND_HOST를 실제 IP 주소로 설정하세요. "
                         f"(예: BACKEND_HOST=10.10.11.18)"
                     )
-            
+
             backend_port = settings.BACKEND_PORT or 8000
 
             # 장비가 접근할 수 있는 절대 URL 생성
@@ -336,20 +363,42 @@ async def control_speaker(
 
         # MQTT 명령 전송
         mqtt = get_mqtt_service()
+
+        # 액션별 MQTT 명령 구성
+        mqtt_kwargs = {"volume": control.volume}
+
+        if control.action == "play_alarm":
+            mqtt_kwargs["type"] = control.alarm_type
+            mqtt_kwargs["repeat"] = control.repeat or 1
+        elif control.action == "play_beep":
+            mqtt_kwargs["frequency"] = control.frequency
+            mqtt_kwargs["duration"] = control.duration
+        elif control.action == "play":
+            mqtt_kwargs["audio_url"] = audio_url
+
         request_id = mqtt.send_control_command(
             device_id=device.device_id,
             command="speaker",
             action=control.action,
-            audio_url=audio_url,
-            volume=control.volume,
+            **mqtt_kwargs,
         )
 
         # TODO: 로그인 수정 후 감사 로그 활성화
         logger.info(f"장비 {device.device_name}의 스피커 제어: {control.action}")
 
+        # 액션별 응답 메시지
+        messages = {
+            "play": f"오디오 재생 명령을 전송했습니다",
+            "play_alarm": f"{control.alarm_type} 알람 재생 명령을 전송했습니다",
+            "play_beep": f"비프음({control.frequency}Hz, {control.duration}ms) 재생 명령을 전송했습니다",
+            "stop": "스피커 정지 명령을 전송했습니다",
+        }
+
         return ControlResponse(
             success=True,
-            message=f"스피커 {control.action} 명령을 전송했습니다",
+            message=messages.get(
+                control.action, f"스피커 {control.action} 명령을 전송했습니다"
+            ),
             request_id=request_id,
         )
 
@@ -442,7 +491,11 @@ async def control_system(
     시스템 제어
 
     권한: OPERATOR 이상
-    액션: restart (장비 재시작)
+    액션:
+    - restart: 장비 재시작
+    - wake: 장비 깨우기 (오프라인 장비에도 전송 가능)
+    - sleep: 장비 절전 모드 전환
+    - set_interval: 상태 보고 주기 변경 (interval 필수, 초 단위)
     """
     # 장비 확인
     device = db.query(Device).filter(Device.id == device_id).first()
@@ -451,7 +504,16 @@ async def control_system(
             status_code=status.HTTP_404_NOT_FOUND, detail="장비를 찾을 수 없습니다"
         )
 
-    if not device.is_online:
+    # set_interval 액션 시 interval 필수
+    if control.action == "set_interval" and not control.interval:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="set_interval 액션은 interval이 필요합니다 (10-3600초)",
+        )
+
+    # wake 명령은 오프라인 장비에도 전송 가능 (MQTT retained 메시지로)
+    # restart, sleep, set_interval 명령은 온라인 장비에만 전송
+    if control.action not in ["wake"] and not device.is_online:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="장비가 오프라인 상태입니다"
         )
@@ -459,16 +521,51 @@ async def control_system(
     try:
         # MQTT 명령 전송
         mqtt = get_mqtt_service()
-        request_id = mqtt.send_control_command(
-            device_id=device.device_id, command="system", action=control.action
-        )
+
+        # wake 명령은 retained 메시지로 전송 (장비가 연결되면 즉시 수신)
+        if control.action == "wake":
+            request_id = mqtt.send_control_command(
+                device_id=device.device_id,
+                command="system",
+                action=control.action,
+                retain=True,  # 장비가 연결되면 즉시 수신
+            )
+        elif control.action == "set_interval":
+            # DB 업데이트
+            device.status_report_interval = control.interval
+            db.commit()
+
+            # MQTT로 장비에 전송 (interval은 초 단위)
+            request_id = mqtt.send_control_command(
+                device_id=device.device_id,
+                command="system",
+                action=control.action,
+                interval=control.interval,
+            )
+            logger.info(
+                f"장비 {device.device_name}의 상태 보고 주기 변경: {control.interval}초"
+            )
+        else:
+            request_id = mqtt.send_control_command(
+                device_id=device.device_id, command="system", action=control.action
+            )
 
         # TODO: 로그인 수정 후 감사 로그 활성화
         logger.info(f"장비 {device.device_name}의 시스템 제어: {control.action}")
 
+        # 액션별 응답 메시지
+        messages = {
+            "restart": "시스템 재시작 명령을 전송했습니다",
+            "wake": "깨우기 명령을 전송했습니다. 장비가 연결되면 자동으로 온라인 상태가 됩니다.",
+            "sleep": "절전 모드 명령을 전송했습니다",
+            "set_interval": f"상태 보고 주기를 {control.interval}초로 변경했습니다",
+        }
+
         return ControlResponse(
             success=True,
-            message=f"시스템 {control.action} 명령을 전송했습니다",
+            message=messages.get(
+                control.action, f"시스템 {control.action} 명령을 전송했습니다"
+            ),
             request_id=request_id,
         )
 

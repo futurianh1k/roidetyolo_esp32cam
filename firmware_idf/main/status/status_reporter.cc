@@ -92,6 +92,30 @@ void StatusReporter::Stop() {
   ESP_LOGI(TAG, "Stopped");
 }
 
+bool StatusReporter::SetInterval(uint32_t interval_ms) {
+  // 최소 10초, 최대 1시간 제한
+  if (interval_ms < 10000) {
+    interval_ms = 10000;
+  } else if (interval_ms > 3600000) {
+    interval_ms = 3600000;
+  }
+
+  report_interval_ms_ = interval_ms;
+
+  // 타이머가 실행 중이면 주기 변경
+  if (report_timer_ != nullptr && is_running_) {
+    if (xTimerChangePeriod(report_timer_, pdMS_TO_TICKS(interval_ms), 0) !=
+        pdPASS) {
+      ESP_LOGE(TAG, "Failed to change timer period");
+      return false;
+    }
+  }
+
+  ESP_LOGI(TAG, "Interval changed to %d ms (%d seconds)", interval_ms,
+           interval_ms / 1000);
+  return true;
+}
+
 bool StatusReporter::ReportNow() {
   if (!initialized_) {
     ESP_LOGE(TAG, "Not initialized");

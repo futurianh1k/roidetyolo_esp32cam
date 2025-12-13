@@ -2,6 +2,7 @@
 #include "asr/asr_service.h"
 #include "audio/audio_codec.h"
 #include "audio/audio_service.h"
+#include "audio/wav_player.h"
 #include "camera/camera_service.h"
 #include "config.h"
 #include "display/display_service.h"
@@ -16,9 +17,95 @@
 #include <cstring>
 #include <esp_log.h>
 #include <esp_system.h>
+#include <nvs.h>
+#include <nvs_flash.h>
 #include <string>
 
 #define TAG "Application"
+
+// NVS namespace and key for device DB ID
+#define NVS_NAMESPACE "device_cfg"
+#define NVS_KEY_DEVICE_DB_ID "device_db_id"
+
+// 동적으로 로드된 Device DB ID (런타임에 설정됨)
+static int device_db_id_ = 0;
+
+// NVS에서 device_db_id 로드
+static bool LoadDeviceDbIdFromNVS(int &out_id) {
+  nvs_handle_t handle;
+  esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "NVS namespace not found: %s", esp_err_to_name(err));
+    return false;
+  }
+
+  int32_t stored_id = 0;
+  err = nvs_get_i32(handle, NVS_KEY_DEVICE_DB_ID, &stored_id);
+  nvs_close(handle);
+
+  if (err == ESP_OK && stored_id > 0) {
+    out_id = stored_id;
+    ESP_LOGI(TAG, "Loaded device_db_id from NVS: %d", out_id);
+    return true;
+  }
+
+  ESP_LOGW(TAG, "device_db_id not found in NVS");
+  return false;
+}
+
+// NVS에 device_db_id 저장
+static bool SaveDeviceDbIdToNVS(int id) {
+  nvs_handle_t handle;
+  esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to open NVS namespace: %s", esp_err_to_name(err));
+    return false;
+  }
+
+  err = nvs_set_i32(handle, NVS_KEY_DEVICE_DB_ID, id);
+  if (err == ESP_OK) {
+    err = nvs_commit(handle);
+  }
+  nvs_close(handle);
+
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "Saved device_db_id to NVS: %d", id);
+    return true;
+  }
+
+  ESP_LOGE(TAG, "Failed to save device_db_id to NVS: %s", esp_err_to_name(err));
+  return false;
+}
+
+// 백엔드에서 device_id로 DB ID를 조회하여 설정
+static bool ResolveDeviceDbId() {
+  // 1. NVS에서 먼저 확인
+  if (LoadDeviceDbIdFromNVS(device_db_id_)) {
+    return true;
+  }
+
+  // 2. 백엔드에서 조회
+  ESP_LOGI(TAG, "Looking up device_db_id from backend for: %s", DEVICE_ID);
+
+  BackendClient lookup_client;
+  std::string backend_url = "http://" + std::string(BACKEND_HOST) + ":" +
+                            std::to_string(BACKEND_PORT);
+
+  // 임시로 device_id=1로 초기화 (LookupDeviceDbId만 사용하므로 무관)
+  lookup_client.Initialize(backend_url, 1);
+
+  int db_id = 0;
+  if (lookup_client.LookupDeviceDbId(DEVICE_ID, db_id)) {
+    device_db_id_ = db_id;
+    // NVS에 저장
+    SaveDeviceDbIdToNVS(device_db_id_);
+    ESP_LOGI(TAG, "Resolved device_db_id: %s -> %d", DEVICE_ID, device_db_id_);
+    return true;
+  }
+
+  ESP_LOGE(TAG, "Failed to resolve device_db_id for: %s", DEVICE_ID);
+  return false;
+}
 
 // 전역 인스턴스
 static PowerManager *power_manager_ = nullptr;
@@ -31,6 +118,7 @@ static ASRService *asr_service_ = nullptr;
 static DisplayService *display_service_ = nullptr;
 static StatusReporter *status_reporter_ = nullptr;
 static ButtonService *button_service_ = nullptr;
+static WavPlayer *wav_player_ = nullptr;
 
 Application::Application() {
   event_group_ = xEventGroupCreate();
@@ -110,6 +198,14 @@ void Application::Initialize() {
     } else {
       ESP_LOGW(TAG, "Audio service init failed");
     }
+
+    // WAV 플레이어 초기화
+    wav_player_ = new WavPlayer();
+    if (wav_player_->Initialize(audio_codec_)) {
+      ESP_LOGI(TAG, "WAV player initialized");
+    } else {
+      ESP_LOGW(TAG, "WAV player init failed");
+    }
   } else {
     ESP_LOGW(TAG, "Audio codec initialization failed, continuing...");
   }
@@ -177,17 +273,12 @@ void Application::Initialize() {
     }
   }
 
-  // Initialize Status Reporter (상태 전송 서비스)
+  // Status Reporter는 네트워크 연결 후 device_db_id 조회 후 초기화됨
+  // (HandleNetworkConnectedEvent에서 처리)
   status_reporter_ = new StatusReporter();
-  std::string backend_url = "http://" + std::string(BACKEND_HOST) + ":" +
-                            std::to_string(BACKEND_PORT);
-  if (status_reporter_->Initialize(backend_url, DEVICE_DB_ID,
-                                   STATUS_REPORT_INTERVAL_MS)) {
-    ESP_LOGI(TAG, "Status reporter initialized (interval=%dms)",
-             STATUS_REPORT_INTERVAL_MS);
-  } else {
-    ESP_LOGW(TAG, "Status reporter initialization failed");
-  }
+  ESP_LOGI(
+      TAG,
+      "Status reporter created (will initialize after network connection)");
 
   // Initialize Button Service (버튼 입력 처리)
   button_service_ = new ButtonService();
@@ -360,10 +451,67 @@ void Application::Initialize() {
     if (topic.find("/control/speaker") != std::string::npos) {
       cJSON *action_item = cJSON_GetObjectItem(json, "action");
 
-      if (action_item && cJSON_IsString(action_item) && audio_service_) {
+      if (action_item && cJSON_IsString(action_item)) {
         std::string action = action_item->valuestring;
 
-        if (action == "play") {
+        if (action == "play_alarm" && wav_player_) {
+          // 알람음 재생: {"action": "play_alarm", "type":
+          // "beep|alert|notification|emergency", "repeat": 1}
+          cJSON *type_item = cJSON_GetObjectItem(json, "type");
+          cJSON *repeat_item = cJSON_GetObjectItem(json, "repeat");
+
+          AlarmType alarm_type = AlarmType::kBeep;
+          int repeat = 1;
+
+          if (type_item && cJSON_IsString(type_item)) {
+            std::string type_str = type_item->valuestring;
+            if (type_str == "alert") {
+              alarm_type = AlarmType::kAlert;
+            } else if (type_str == "notification") {
+              alarm_type = AlarmType::kNotification;
+            } else if (type_str == "emergency") {
+              alarm_type = AlarmType::kEmergency;
+            }
+          }
+
+          if (repeat_item && cJSON_IsNumber(repeat_item)) {
+            repeat = repeat_item->valueint;
+            if (repeat < 1)
+              repeat = 1;
+            if (repeat > 10)
+              repeat = 10;
+          }
+
+          ESP_LOGI(TAG, "Playing alarm: type=%d, repeat=%d",
+                   static_cast<int>(alarm_type), repeat);
+          wav_player_->PlayAlarm(alarm_type, repeat);
+
+        } else if (action == "play_beep" && wav_player_) {
+          // 비프음 재생: {"action": "play_beep", "frequency": 1000, "duration":
+          // 200, "volume": 80}
+          cJSON *freq_item = cJSON_GetObjectItem(json, "frequency");
+          cJSON *duration_item = cJSON_GetObjectItem(json, "duration");
+          cJSON *volume_item = cJSON_GetObjectItem(json, "volume");
+
+          int frequency = 1000;
+          int duration = 200;
+          int volume = 80;
+
+          if (freq_item && cJSON_IsNumber(freq_item)) {
+            frequency = freq_item->valueint;
+          }
+          if (duration_item && cJSON_IsNumber(duration_item)) {
+            duration = duration_item->valueint;
+          }
+          if (volume_item && cJSON_IsNumber(volume_item)) {
+            volume = volume_item->valueint;
+          }
+
+          ESP_LOGI(TAG, "Playing beep: freq=%d, dur=%d, vol=%d", frequency,
+                   duration, volume);
+          wav_player_->PlayBeep(frequency, duration, volume);
+
+        } else if (action == "play" && audio_service_) {
           cJSON *audio_file_item = cJSON_GetObjectItem(json, "audio_file");
           cJSON *volume_item = cJSON_GetObjectItem(json, "volume");
 
@@ -376,12 +524,23 @@ void Application::Initialize() {
               audio_service_->SetVolume(volume);
             }
 
-            // 오디오 파일 재생
-            // TODO: HTTP로 오디오 파일 다운로드 후 재생
-            ESP_LOGI(TAG, "Speaker play: %s", audio_file.c_str());
+            // SPIFFS에서 WAV 파일 재생
+            if (wav_player_ && audio_file.find(".wav") != std::string::npos) {
+              std::string spiffs_path = "/spiffs/" + audio_file;
+              ESP_LOGI(TAG, "Playing WAV file: %s", spiffs_path.c_str());
+              wav_player_->PlayFile(spiffs_path);
+            } else {
+              ESP_LOGI(TAG, "Speaker play: %s (not implemented)",
+                       audio_file.c_str());
+            }
           }
         } else if (action == "stop") {
-          audio_service_->Stop();
+          if (wav_player_) {
+            wav_player_->Stop();
+          }
+          if (audio_service_) {
+            audio_service_->Stop();
+          }
           ESP_LOGI(TAG, "Speaker stopped");
         }
       }
@@ -423,13 +582,68 @@ void Application::Initialize() {
         std::string action = action_item->valuestring;
 
         if (action == "restart") {
-          ESP_LOGI(TAG, "System restart requested");
+          ESP_LOGI(TAG, "System restart requested via MQTT");
           if (display_service_) {
             display_service_->ShowText("Restarting...", 2000);
           }
           // 2초 후 재시작
           vTaskDelay(pdMS_TO_TICKS(2000));
           esp_restart();
+        } else if (action == "wake") {
+          // Wake 명령: 즉시 상태 보고하여 온라인 상태로 전환
+          ESP_LOGI(TAG, "Wake command received via MQTT");
+          if (display_service_) {
+            display_service_->ShowText("Waking up...", 2000);
+          }
+          // 즉시 상태 보고
+          if (status_reporter_) {
+            status_reporter_->ReportNow();
+            ESP_LOGI(TAG, "Status reported - device is now online");
+          }
+        } else if (action == "sleep") {
+          // Sleep 명령: Light Sleep 모드 진입
+          ESP_LOGI(TAG, "Sleep command received via MQTT");
+          if (display_service_) {
+            display_service_->ShowText("Sleeping...", 1000);
+          }
+          vTaskDelay(pdMS_TO_TICKS(1000));
+
+          // Light Sleep 진입 (5분 후 자동 깨우기)
+          if (power_manager_) {
+            power_manager_->EnterLightSleep(LIGHT_SLEEP_DURATION_MS);
+
+            // 깨어난 후 즉시 상태 보고
+            ESP_LOGI(TAG, "Woke up from Light Sleep");
+            if (display_service_) {
+              display_service_->ShowText("Woke up!", 2000);
+            }
+            if (status_reporter_) {
+              status_reporter_->ReportNow();
+            }
+          } else {
+            ESP_LOGW(TAG, "Power manager not available for sleep");
+          }
+        } else if (action == "set_interval") {
+          // 상태 보고 주기 변경: {"action": "set_interval", "interval": 60}
+          cJSON *interval_item = cJSON_GetObjectItem(json, "interval");
+          if (interval_item && cJSON_IsNumber(interval_item)) {
+            int interval_sec = interval_item->valueint;
+            uint32_t interval_ms = interval_sec * 1000;
+
+            ESP_LOGI(TAG, "Set interval command: %d seconds", interval_sec);
+
+            if (status_reporter_) {
+              if (status_reporter_->SetInterval(interval_ms)) {
+                if (display_service_) {
+                  char msg[32];
+                  snprintf(msg, sizeof(msg), "Interval: %ds", interval_sec);
+                  display_service_->ShowText(msg, 2000);
+                }
+              }
+            }
+          } else {
+            ESP_LOGW(TAG, "set_interval: missing interval parameter");
+          }
         }
       }
     }
@@ -545,6 +759,30 @@ void Application::HandleNetworkConnectedEvent() {
   ESP_LOGI(TAG, "Network connected");
   SetDeviceState(kDeviceStateConnected);
 
+  // Device DB ID 조회 (NVS 또는 백엔드에서)
+  if (device_db_id_ == 0) {
+    if (ResolveDeviceDbId()) {
+      ESP_LOGI(TAG, "Device DB ID resolved: %d", device_db_id_);
+    } else {
+      ESP_LOGE(TAG,
+               "Failed to resolve Device DB ID - status reporting disabled");
+    }
+  }
+
+  // Status Reporter 초기화 및 시작
+  if (status_reporter_ && device_db_id_ > 0) {
+    std::string backend_url = "http://" + std::string(BACKEND_HOST) + ":" +
+                              std::to_string(BACKEND_PORT);
+    if (status_reporter_->Initialize(backend_url, device_db_id_,
+                                     STATUS_REPORT_INTERVAL_MS)) {
+      status_reporter_->Start();
+      ESP_LOGI(TAG, "Status reporter initialized and started (device_db_id=%d)",
+               device_db_id_);
+    } else {
+      ESP_LOGW(TAG, "Status reporter initialization failed");
+    }
+  }
+
   // MQTT 연결
   if (mqtt_client_) {
     std::string client_id = MQTT_CLIENT_ID_PREFIX + std::string(DEVICE_ID);
@@ -554,12 +792,6 @@ void Application::HandleNetworkConnectedEvent() {
     } else {
       ESP_LOGW(TAG, "MQTT connection failed, will retry");
     }
-  }
-
-  // 상태 보고 서비스 시작
-  if (status_reporter_ && !status_reporter_->IsRunning()) {
-    status_reporter_->Start();
-    ESP_LOGI(TAG, "Status reporter started");
   }
 }
 
