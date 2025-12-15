@@ -1,0 +1,76 @@
+# ============================================================
+# YOLO 검출 서버 Docker Compose (Jetson 전용)
+# 대상: NVIDIA Jetson (Orin, Xavier, Nano)
+# ============================================================
+
+version: '3.8'
+
+services:
+  yolo:
+    build:
+      context: ../..
+      dockerfile: docker/yolo-jetson/Dockerfile
+    container_name: yolo-detector
+    restart: unless-stopped
+    
+    # NVIDIA GPU 접근
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+      
+      # 앱 설정
+      - YOLO_MODEL=${YOLO_MODEL:-/app/models/yolov8n.pt}
+      - YOLO_FORCE_CPU=${YOLO_FORCE_CPU:-false}
+      - STORAGE_PATH=/app/detection_results
+      - STORAGE_MAX_MB=${STORAGE_MAX_MB:-500}
+      
+      # Streamlit 설정
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      
+      # 시간대
+      - TZ=Asia/Seoul
+    
+    ports:
+      - "8501:8501"  # Streamlit UI
+      - "8082:8082"  # Image Receiver API
+    
+    volumes:
+      # 검출 결과 저장 (호스트에 영구 저장)
+      - yolo_results:/app/detection_results
+      
+      # 모델 캐시 (재시작 시 다운로드 방지)
+      - yolo_models:/app/models
+      
+      # 설정 파일 (선택)
+      - ./config:/app/yolodetect/config:ro
+    
+    # 메모리 제한 (Jetson 메모리 사양에 맞게 조정)
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    
+    networks:
+      - yolo-network
+
+volumes:
+  yolo_results:
+  yolo_models:
+
+networks:
+  yolo-network:
+    driver: bridge

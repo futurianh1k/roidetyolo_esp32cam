@@ -17,6 +17,8 @@ set(SOURCES
     
     # Camera module
     "camera/camera_service.cc"
+    "camera/camera_stream_server.cc"
+    "camera/rtsp_server.cc"
     
     # Network module
     "network/wifi_manager.cc"
@@ -58,6 +60,7 @@ idf_component_register(
         driver
         esp_wifi
         esp_http_client
+        esp_http_server
         esp_websocket_client
         nvs_flash
         esp32-camera

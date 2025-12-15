@@ -32,6 +32,15 @@ class Device(Base):
         Integer, default=60, nullable=False
     )  # 상태 보고 주기 (초), 기본값 60초
 
+    # 카메라 스트림 전송 설정
+    camera_sink_url = Column(String(500), nullable=True)  # 영상 sink URL
+    camera_stream_mode = Column(
+        String(50), default="mjpeg_stills", nullable=True
+    )  # 전송 방식: mjpeg_stills, realtime_websocket, realtime_rtsp
+    camera_frame_interval_ms = Column(
+        Integer, default=1000, nullable=False
+    )  # 프레임 전송 주기 (ms), 기본값 1000ms
+
     # Relationships
     status_records = relationship(
         "DeviceStatus", back_populates="device", cascade="all, delete-orphan"

@@ -74,7 +74,7 @@ def send_emergency_alert(recognized_text: str, emergency_keywords: List[str]):
             # 이미지 URL 생성 (선택적)
             image_url = None
             if config.get("include_image_url", False):
-                image_base = config.get("image_base_url", "http://10.10.11.79:8080/api/images")
+                image_base = config.get("image_base_url", os.getenv("IMAGE_BASE_URL", "http://localhost:8080/api/images"))
                 image_filename = f"emergency_{event_id.split('-')[0]}.jpeg"
                 image_url = f"{image_base}/{image_filename}"
             

@@ -305,6 +305,22 @@ async def update_device(
         if device_data.is_online:
             device.last_seen_at = datetime.utcnow()
 
+    # 상태 보고 주기
+    if device_data.status_report_interval is not None:
+        device.status_report_interval = device_data.status_report_interval
+
+    # 카메라 스트림 전송 설정
+    if device_data.camera_sink_url is not None:
+        device.camera_sink_url = (
+            device_data.camera_sink_url if device_data.camera_sink_url else None
+        )
+
+    if device_data.camera_stream_mode is not None:
+        device.camera_stream_mode = device_data.camera_stream_mode
+
+    if device_data.camera_frame_interval_ms is not None:
+        device.camera_frame_interval_ms = device_data.camera_frame_interval_ms
+
     db.commit()
     db.refresh(device)
 
@@ -321,7 +337,9 @@ async def update_device(
     # db.add(audit_log)
     # db.commit()
 
-    logger.info(f"장비 {device.device_name} 정보 수정 (IP: {device_data.ip_address})")
+    logger.info(
+        f"장비 {device.device_name} 정보 수정 (IP: {device.ip_address}, camera_sink: {device.camera_sink_url})"
+    )
 
     return device
 

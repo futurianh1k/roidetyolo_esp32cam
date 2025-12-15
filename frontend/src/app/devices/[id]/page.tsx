@@ -650,12 +650,15 @@ export default function DeviceDetailPage() {
         </div>
 
         {/* Video Stream Section */}
-        {device.ip_address && (
+        {(device.rtsp_url || device.ip_address) && (
           <div className="mb-6">
             <VideoPlayer
-              streamUrl={device.ip_address}
+              deviceId={device.id}
+              streamUrl={device.ip_address || ''}
+              rtspUrl={device.rtsp_url || ''}
               deviceName={device.device_name}
               isOnline={device.is_online}
+              useProxy={true}
             />
           </div>
         )}
@@ -665,7 +668,7 @@ export default function DeviceDetailPage() {
           <DeviceStatus device={device} status={status} isLoading={statusLoading} />
 
           {/* Device Control */}
-          <DeviceControl device={device} />
+          <DeviceControl device={device} onDeviceUpdate={refetchDevice} />
         </div>
 
         {/* Voice Recognition Section */}

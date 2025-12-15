@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Device, controlAPI, audioAPI, AudioFile } from '@/lib/api';
+import { Device, controlAPI, audioAPI, AudioFile, devicesAPI } from '@/lib/api';
+import { getErrorMessage } from '@/lib/errorUtils';
 import toast from 'react-hot-toast';
-import { Camera, Mic, Volume2, Monitor, Play, Pause, Square, Upload, Trash2 } from 'lucide-react';
+import { Camera, Mic, Volume2, Monitor, Play, Pause, Square, Upload, Trash2, Save } from 'lucide-react';
 
 interface DeviceControlProps {
   device: Device;
+  onDeviceUpdate?: () => void;  // 장비 정보 갱신 콜백
 }
 
-export default function DeviceControl({ device }: DeviceControlProps) {
+export default function DeviceControl({ device, onDeviceUpdate }: DeviceControlProps) {
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const [displayText, setDisplayText] = useState('');
   const [selectedEmoji, setSelectedEmoji] = useState('smile');
@@ -18,13 +20,52 @@ export default function DeviceControl({ device }: DeviceControlProps) {
   const [volume, setVolume] = useState<number>(70);
   const [isUploading, setIsUploading] = useState(false);
   
-  // 영상 sink 설정
+  // 영상 sink 설정 (DB에서 로드)
   const [sinkUrl, setSinkUrl] = useState<string>('');
   const [streamMode, setStreamMode] = useState<'mjpeg_stills' | 'realtime_websocket' | 'realtime_rtsp' | ''>('');
   const [frameInterval, setFrameInterval] = useState<number>(1000);
+  const [sinkSettingsChanged, setSinkSettingsChanged] = useState(false);
   
   // 오디오 WebSocket 설정
   const [micWsUrl, setMicWsUrl] = useState<string>('');
+
+  // DB에서 카메라 설정 로드
+  useEffect(() => {
+    if (device) {
+      setSinkUrl(device.camera_sink_url || '');
+      setStreamMode((device.camera_stream_mode as typeof streamMode) || 'mjpeg_stills');
+      setFrameInterval(device.camera_frame_interval_ms || 1000);
+      setSinkSettingsChanged(false);
+    }
+  }, [device]);
+
+  // 설정 변경 감지
+  useEffect(() => {
+    const isChanged = 
+      sinkUrl !== (device.camera_sink_url || '') ||
+      streamMode !== (device.camera_stream_mode || 'mjpeg_stills') ||
+      frameInterval !== (device.camera_frame_interval_ms || 1000);
+    setSinkSettingsChanged(isChanged);
+  }, [sinkUrl, streamMode, frameInterval, device]);
+
+  // 카메라 Sink 설정 저장
+  const saveSinkSettings = async () => {
+    setIsLoading('save-sink');
+    try {
+      await devicesAPI.update(device.id, {
+        camera_sink_url: sinkUrl || null,
+        camera_stream_mode: streamMode || 'mjpeg_stills',
+        camera_frame_interval_ms: frameInterval,
+      });
+      toast.success('카메라 전송 설정 저장됨');
+      setSinkSettingsChanged(false);
+      onDeviceUpdate?.();
+    } catch (error: any) {
+      toast.error(getErrorMessage(error, '설정 저장 실패'));
+    } finally {
+      setIsLoading(null);
+    }
+  };
 
   // 오디오 파일 목록 조회
   useEffect(() => {
@@ -67,8 +108,7 @@ export default function DeviceControl({ device }: DeviceControlProps) {
       loadAudioFiles(); // 목록 새로고침
       setSelectedAudioFile(data.filename);
     } catch (error: any) {
-      const errorMessage = error.response?.data?.detail || '파일 업로드에 실패했습니다';
-      toast.error(errorMessage);
+      toast.error(getErrorMessage(error, '파일 업로드에 실패했습니다'));
     } finally {
       setIsUploading(false);
       // 파일 입력 초기화
@@ -110,8 +150,8 @@ export default function DeviceControl({ device }: DeviceControlProps) {
         toast.error('전송 방식을 선택하세요');
         return;
       }
-      if (streamMode === 'mjpeg_stills' && (!frameInterval || frameInterval < 100 || frameInterval > 10000)) {
-        toast.error('프레임 간격은 100ms ~ 10000ms 사이여야 합니다');
+      if (streamMode === 'mjpeg_stills' && (!frameInterval || frameInterval < 100 || frameInterval > 600000)) {
+        toast.error('프레임 간격은 100ms ~ 10분 사이여야 합니다');
         return;
       }
     }
@@ -128,8 +168,7 @@ export default function DeviceControl({ device }: DeviceControlProps) {
       );
       toast.success(`카메라 ${action === 'start' ? '시작' : action === 'pause' ? '일시정지' : '정지'} 명령 전송`);
     } catch (error: any) {
-      const errorMessage = error.response?.data?.detail || '카메라 제어 실패';
-      toast.error(errorMessage);
+      toast.error(getErrorMessage(error, '카메라 제어 실패'));
     } finally {
       setIsLoading(null);
     }
@@ -308,42 +347,93 @@ export default function DeviceControl({ device }: DeviceControlProps) {
           )}
 
           {/* 프레임 간격 입력 (스틸컷일 경우만) */}
-          {sinkUrl && streamMode === 'mjpeg_stills' && (
-            <div className="space-y-2">
-              <label className="block text-xs font-medium text-gray-600">
-                프레임 간격: {frameInterval}ms
-              </label>
-              <input
-                type="range"
-                min="100"
-                max="10000"
-                step="100"
-                value={frameInterval}
-                onChange={(e) => setFrameInterval(Number(e.target.value))}
-                className="w-full"
-                disabled={!device.is_online}
-              />
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>100ms</span>
-                <span>10초</span>
+          {sinkUrl && streamMode === 'mjpeg_stills' && (() => {
+            // 미리 정의된 간격 값 (ms)
+            const intervalOptions = [
+              { value: 100, label: '100ms' },
+              { value: 500, label: '500ms' },
+              { value: 1000, label: '1초' },
+              { value: 2000, label: '2초' },
+              { value: 5000, label: '5초' },
+              { value: 10000, label: '10초' },
+              { value: 20000, label: '20초' },
+              { value: 30000, label: '30초' },
+              { value: 60000, label: '1분' },
+              { value: 120000, label: '2분' },
+              { value: 300000, label: '5분' },
+              { value: 600000, label: '10분' },
+            ];
+            
+            // 현재 값에 가장 가까운 인덱스 찾기
+            const currentIndex = intervalOptions.findIndex(opt => opt.value >= frameInterval) !== -1
+              ? intervalOptions.findIndex(opt => opt.value >= frameInterval)
+              : intervalOptions.length - 1;
+            
+            // 현재 값의 라벨 찾기
+            const currentOption = intervalOptions.find(opt => opt.value === frameInterval);
+            const displayLabel = currentOption 
+              ? currentOption.label 
+              : frameInterval >= 60000 
+                ? `${(frameInterval / 60000).toFixed(1)}분` 
+                : frameInterval >= 1000 
+                  ? `${(frameInterval / 1000).toFixed(1)}초`
+                  : `${frameInterval}ms`;
+            
+            return (
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-gray-600">
+                  프레임 간격: <span className="font-bold text-blue-600">{displayLabel}</span>
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max={intervalOptions.length - 1}
+                  step="1"
+                  value={currentIndex}
+                  onChange={(e) => setFrameInterval(intervalOptions[Number(e.target.value)].value)}
+                  className="w-full"
+                  disabled={!device.is_online}
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>100ms</span>
+                  <span>10초</span>
+                  <span>1분</span>
+                  <span>10분</span>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
-          {/* Sink 설정 초기화 버튼 */}
-          {sinkUrl && (
-            <button
-              onClick={() => {
-                setSinkUrl('');
-                setStreamMode('');
-                setFrameInterval(1000);
-              }}
-              className="mt-2 text-xs text-gray-600 hover:text-gray-900 underline"
-              disabled={!device.is_online}
-            >
-              설정 초기화
-            </button>
-          )}
+          {/* Sink 설정 저장/초기화 버튼 */}
+          <div className="flex items-center space-x-3 mt-3">
+            {sinkSettingsChanged && (
+              <button
+                onClick={saveSinkSettings}
+                disabled={isLoading === 'save-sink'}
+                className="flex items-center px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
+              >
+                <Save className="w-3 h-3 mr-1" />
+                {isLoading === 'save-sink' ? '저장 중...' : '설정 저장'}
+              </button>
+            )}
+            {sinkUrl && (
+              <button
+                onClick={() => {
+                  setSinkUrl('');
+                  setStreamMode('mjpeg_stills');
+                  setFrameInterval(1000);
+                }}
+                className="text-xs text-gray-600 hover:text-gray-900 underline"
+              >
+                설정 초기화
+              </button>
+            )}
+          </div>
+          
+          {/* 프레임 전송 주기 안내 */}
+          <p className="mt-2 text-xs text-gray-500">
+            💡 설정 저장 후 카메라 시작하면 해당 주기로 이미지가 전송됩니다
+          </p>
         </div>
 
         {/* 카메라 제어 버튼 */}

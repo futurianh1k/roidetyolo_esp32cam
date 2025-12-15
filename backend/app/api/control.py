@@ -295,7 +295,7 @@ async def control_speaker(
                 # 방법 2: 장비 IP와 같은 서브넷의 백엔드 IP 추론
                 if backend_host in ["localhost", "127.0.0.1"] and device.ip_address:
                     # 장비 IP의 서브넷에서 백엔드 IP 추론
-                    # 예: 장비가 10.10.11.18이면 백엔드는 10.10.11.x (같은 서브넷)
+                    # 예: 장비가 192.168.1.50이면 백엔드는 192.168.1.x (같은 서브넷)
                     ip_parts = device.ip_address.rsplit(".", 1)
                     if len(ip_parts) == 2:
                         # 네트워크 인터페이스에서 실제 IP 찾기
@@ -348,7 +348,7 @@ async def control_speaker(
                     logger.error(
                         f"❌ BACKEND_HOST가 localhost입니다. ESP32 장비가 접근할 수 없습니다. "
                         f".env 파일에 BACKEND_HOST를 실제 IP 주소로 설정하세요. "
-                        f"(예: BACKEND_HOST=10.10.11.18)"
+                        f"(예: BACKEND_HOST=192.168.1.100)"
                     )
 
             backend_port = settings.BACKEND_PORT or 8000

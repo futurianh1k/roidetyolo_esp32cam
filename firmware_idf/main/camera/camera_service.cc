@@ -5,6 +5,7 @@
 #include <esp_camera.h>
 #include <esp_http_client.h>
 #include <esp_log.h>
+#include <img_converters.h>
 
 #define TAG "CameraService"
 
@@ -150,6 +151,11 @@ void CameraService::StartStream(const std::string &sink_url,
   frame_interval_ms_ = frame_interval_ms;
   streaming_active_ = true;
 
+  // 서비스가 실행 중이 아니면 시작
+  if (!service_running_) {
+    Start();
+  }
+
   ESP_LOGI(TAG, "Camera stream started: %s, mode: %s, interval: %dms",
            sink_url.c_str(), stream_mode.c_str(), frame_interval_ms);
 }
@@ -170,8 +176,28 @@ bool CameraService::CaptureFrame(std::vector<uint8_t> &jpeg_data) {
     return false;
   }
 
-  jpeg_data.assign(fb->buf, fb->buf + fb->len);
-  esp_camera_fb_return(fb);
+  // GC0308 카메라는 RGB565로 캡처하므로 JPEG로 변환 필요
+  // Reference: esp32-camera의 img_converters.h
+  if (fb->format == PIXFORMAT_RGB565) {
+    uint8_t *jpeg_out = nullptr;
+    size_t jpeg_len = 0;
+
+    // RGB565 → JPEG 변환
+    bool converted = frame2jpg(fb, 80, &jpeg_out, &jpeg_len); // Quality 80
+    esp_camera_fb_return(fb);
+
+    if (!converted || jpeg_out == nullptr) {
+      ESP_LOGE(TAG, "JPEG conversion failed");
+      return false;
+    }
+
+    jpeg_data.assign(jpeg_out, jpeg_out + jpeg_len);
+    free(jpeg_out); // frame2jpg가 할당한 메모리 해제
+  } else {
+    // 이미 JPEG 형식인 경우 (다른 카메라)
+    jpeg_data.assign(fb->buf, fb->buf + fb->len);
+    esp_camera_fb_return(fb);
+  }
 
   return true;
 }
@@ -190,10 +216,13 @@ void CameraService::CameraTaskImpl() {
       if (now - last_frame_time >= pdMS_TO_TICKS(frame_interval_ms_)) {
         std::vector<uint8_t> jpeg_data;
         if (CaptureFrame(jpeg_data)) {
-          if (stream_mode_ == "http" || stream_mode_ == "mjpeg") {
+          // mjpeg_stills, http, mjpeg 모두 HTTP POST로 전송
+          if (stream_mode_ == "mjpeg_stills" || stream_mode_ == "http" ||
+              stream_mode_ == "mjpeg") {
             SendFrameHTTP(jpeg_data);
           }
-          // TODO: WebSocket 스트리밍 추가
+          // TODO: WebSocket 스트리밍 추가 (realtime_websocket)
+          // TODO: RTSP 스트리밍 추가 (realtime_rtsp)
         }
         last_frame_time = now;
       }
@@ -210,6 +239,32 @@ bool CameraService::SendFrameHTTP(const std::vector<uint8_t> &jpeg_data) {
     return false;
   }
 
+  // Multipart form-data 형식으로 전송 (FastAPI UploadFile 호환)
+  // Reference: RFC 2046 (multipart/form-data)
+  static const char *boundary = "----ESP32CameraBoundary";
+
+  // Multipart 헤더 구성
+  std::string header = std::string("------") + boundary + "\r\n";
+  header += "Content-Disposition: form-data; name=\"file\"; "
+            "filename=\"frame.jpg\"\r\n";
+  header += "Content-Type: image/jpeg\r\n\r\n";
+
+  // Multipart 끝 경계
+  std::string footer = "\r\n------";
+  footer += boundary;
+  footer += "--\r\n";
+
+  // 전체 바디 구성
+  std::vector<uint8_t> body;
+  body.reserve(header.size() + jpeg_data.size() + footer.size());
+
+  // 헤더 추가
+  body.insert(body.end(), header.begin(), header.end());
+  // JPEG 데이터 추가
+  body.insert(body.end(), jpeg_data.begin(), jpeg_data.end());
+  // 푸터 추가
+  body.insert(body.end(), footer.begin(), footer.end());
+
   esp_http_client_config_t config = {};
   config.url = sink_url_.c_str();
   config.method = HTTP_METHOD_POST;
@@ -221,10 +276,14 @@ bool CameraService::SendFrameHTTP(const std::vector<uint8_t> &jpeg_data) {
     return false;
   }
 
+  // Multipart Content-Type 설정
+  std::string content_type =
+      std::string("multipart/form-data; boundary=----") + boundary;
+
   esp_http_client_set_method(client, HTTP_METHOD_POST);
-  esp_http_client_set_header(client, "Content-Type", "image/jpeg");
-  esp_http_client_set_post_field(client, (const char *)jpeg_data.data(),
-                                 jpeg_data.size());
+  esp_http_client_set_header(client, "Content-Type", content_type.c_str());
+  esp_http_client_set_post_field(client, (const char *)body.data(),
+                                 body.size());
 
   esp_err_t err = esp_http_client_perform(client);
   int status_code = esp_http_client_get_status_code(client);
@@ -237,5 +296,6 @@ bool CameraService::SendFrameHTTP(const std::vector<uint8_t> &jpeg_data) {
     return false;
   }
 
+  ESP_LOGI(TAG, "Frame sent successfully (%d bytes)", jpeg_data.size());
   return true;
 }

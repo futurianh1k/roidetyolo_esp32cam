@@ -1,0 +1,111 @@
+# ============================================================
+# 웹앱 Docker Compose
+# 프론트엔드 (Next.js) + 백엔드 (FastAPI) + DB (MySQL)
+# 대상: 일반 PC, 클라우드 서버
+# ============================================================
+
+version: '3.8'
+
+services:
+  # ============================================================
+  # MySQL 데이터베이스
+  # ============================================================
+  db:
+    image: mysql:8.0
+    container_name: webapp-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-cores3_db}
+      MYSQL_USER: ${MYSQL_USER:-cores3user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-cores3password}
+      TZ: Asia/Seoul
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - webapp-network
+
+  # ============================================================
+  # MQTT 브로커
+  # ============================================================
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: webapp-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - webapp-network
+
+  # ============================================================
+  # 백엔드 (FastAPI)
+  # ============================================================
+  backend:
+    build:
+      context: ../..
+      dockerfile: docker/webapp/Dockerfile.backend
+    container_name: webapp-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=mysql+pymysql://${MYSQL_USER:-cores3user}:${MYSQL_PASSWORD:-cores3password}@db:3306/${MYSQL_DATABASE:-cores3_db}
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - MQTT_BROKER_HOST=mosquitto
+      - MQTT_BROKER_PORT=1883
+      - TZ=Asia/Seoul
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - webapp-network
+
+  # ============================================================
+  # 프론트엔드 (Next.js)
+  # ============================================================
+  frontend:
+    build:
+      context: ../..
+      dockerfile: docker/webapp/Dockerfile.frontend
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
+    container_name: webapp-frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
+      - TZ=Asia/Seoul
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - webapp-network
+
+volumes:
+  mysql_data:
+  mosquitto_data:
+  mosquitto_log:
+
+networks:
+  webapp-network:
+    driver: bridge

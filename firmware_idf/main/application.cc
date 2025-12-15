@@ -4,6 +4,8 @@
 #include "audio/audio_service.h"
 #include "audio/wav_player.h"
 #include "camera/camera_service.h"
+#include "camera/camera_stream_server.h"
+#include "camera/rtsp_server.h"
 #include "config.h"
 #include "display/display_service.h"
 #include "input/button_service.h"
@@ -112,6 +114,8 @@ static PowerManager *power_manager_ = nullptr;
 static AudioCodec *audio_codec_ = nullptr;
 static AudioService *audio_service_ = nullptr;
 static CameraService *camera_service_ = nullptr;
+static CameraStreamServer *camera_stream_server_ = nullptr;
+static RTSPServer *rtsp_server_ = nullptr;
 static WiFiManager *wifi_manager_ = nullptr;
 static MQTTClient *mqtt_client_ = nullptr;
 static ASRService *asr_service_ = nullptr;
@@ -218,6 +222,7 @@ void Application::Initialize() {
   if (camera_service_->Initialize()) {
     camera_service_->Start();
     ESP_LOGI(TAG, "Camera service initialized");
+    // Note: Camera Stream Servers will be started after WiFi connection
   } else {
     ESP_LOGW(TAG, "Camera initialization failed, continuing...");
   }
@@ -372,11 +377,41 @@ void Application::Initialize() {
         std::string action = action_item->valuestring;
 
         if (action == "start") {
-          camera_service_->Start();
+          // sink_url, stream_mode, frame_interval 파싱
+          cJSON *sink_url_item = cJSON_GetObjectItem(json, "sink_url");
+          cJSON *stream_mode_item = cJSON_GetObjectItem(json, "stream_mode");
+          cJSON *frame_interval_item =
+              cJSON_GetObjectItem(json, "frame_interval");
+
+          std::string sink_url = "";
+          std::string stream_mode = "mjpeg_stills";
+          int frame_interval_ms = 1000;
+
+          if (sink_url_item && cJSON_IsString(sink_url_item)) {
+            sink_url = sink_url_item->valuestring;
+          }
+          if (stream_mode_item && cJSON_IsString(stream_mode_item)) {
+            stream_mode = stream_mode_item->valuestring;
+          }
+          if (frame_interval_item && cJSON_IsNumber(frame_interval_item)) {
+            frame_interval_ms = frame_interval_item->valueint;
+          }
+
+          // sink_url이 있으면 스트림 전송 모드로 시작
+          if (!sink_url.empty()) {
+            camera_service_->StartStream(sink_url, stream_mode,
+                                         frame_interval_ms);
+            ESP_LOGI(TAG,
+                     "Camera stream started -> %s (mode: %s, interval: %dms)",
+                     sink_url.c_str(), stream_mode.c_str(), frame_interval_ms);
+          } else {
+            camera_service_->Start();
+            ESP_LOGI(TAG, "Camera started (local mode)");
+          }
+
           if (status_reporter_) {
             status_reporter_->SetCameraStatus("active");
           }
-          ESP_LOGI(TAG, "Camera started");
         } else if (action == "stop") {
           camera_service_->Stop();
           if (status_reporter_) {
@@ -791,6 +826,49 @@ void Application::HandleNetworkConnectedEvent() {
       // 토픽 구독은 MQTT 연결 콜백에서 자동으로 처리됨
     } else {
       ESP_LOGW(TAG, "MQTT connection failed, will retry");
+    }
+  }
+
+  // ==========================================================
+  // Camera Stream Servers 시작 (WiFi 연결 후)
+  // ==========================================================
+  if (camera_service_) {
+    ESP_LOGI(TAG, "Starting Camera Stream Servers...");
+
+    // HTTP MJPEG 스트리밍 서버 (포트 81)
+    if (!camera_stream_server_) {
+      camera_stream_server_ = new CameraStreamServer(camera_service_);
+    }
+    if (!camera_stream_server_->IsHTTPRunning()) {
+      if (camera_stream_server_->Start()) {
+        ESP_LOGI(TAG, "HTTP MJPEG stream server started on port 81");
+      } else {
+        ESP_LOGW(TAG, "HTTP MJPEG stream server failed to start");
+      }
+    }
+
+    // RTSP 스트리밍 서버 (포트 554)
+    if (!rtsp_server_) {
+      rtsp_server_ = new RTSPServer();
+      rtsp_server_->SetFrameCallback([](uint8_t **buf, size_t *len) -> bool {
+        if (!camera_service_) {
+          return false;
+        }
+        static std::vector<uint8_t> frame_buffer;
+        if (camera_service_->CaptureFrame(frame_buffer)) {
+          *buf = frame_buffer.data();
+          *len = frame_buffer.size();
+          return true;
+        }
+        return false;
+      });
+    }
+    if (!rtsp_server_->IsRunning()) {
+      if (rtsp_server_->Start()) {
+        ESP_LOGI(TAG, "RTSP stream server started on port 554");
+      } else {
+        ESP_LOGW(TAG, "RTSP stream server failed to start");
+      }
     }
   }
 }

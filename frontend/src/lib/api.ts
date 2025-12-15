@@ -83,6 +83,10 @@ export interface Device {
   location: string | null;
   description: string | null;
   status_report_interval: number;  // 상태 보고 주기 (초)
+  // 카메라 스트림 전송 설정
+  camera_sink_url: string | null;
+  camera_stream_mode: string | null;
+  camera_frame_interval_ms: number;  // 프레임 전송 주기 (ms)
 }
 
 export interface DeviceStatus {
@@ -126,6 +130,10 @@ export interface DeviceUpdateRequest {
   mqtt_topic?: string;
   location?: string;
   description?: string;
+  // 카메라 스트림 전송 설정
+  camera_sink_url?: string | null;
+  camera_stream_mode?: string;
+  camera_frame_interval_ms?: number;
 }
 
 export const devicesAPI = {

@@ -4,18 +4,19 @@
 """
 import requests
 import json
+import os
 from datetime import datetime
 
-# 백엔드 서버 URL
-API_BASE_URL = "http://localhost:8000"
+# 백엔드 서버 URL (환경변수로 오버라이드 가능)
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-# 펌웨어 config.h의 장비 정보
+# 펌웨어 config.h의 장비 정보 (환경변수로 오버라이드 가능)
 DEVICE_DATA = {
-    "device_id": "core_s3_001",
-    "device_name": "Core S3 Camera",
+    "device_id": os.getenv("DEVICE_ID", "core_s3_001"),
+    "device_name": os.getenv("DEVICE_NAME", "Core S3 Camera"),
     "device_type": "CoreS3",
-    "ip_address": "10.10.11.18",  # 실제 ESP32의 IP로 변경 필요
-    "location": "Office",
+    "ip_address": os.getenv("DEVICE_IP", "192.168.1.100"),  # 실제 ESP32의 IP로 변경 필요
+    "location": os.getenv("DEVICE_LOCATION", "Office"),
     "description": "M5Stack Core S3 Camera Device"
 }
 

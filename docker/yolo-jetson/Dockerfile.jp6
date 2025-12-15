@@ -1,0 +1,84 @@
+# ============================================================
+# YOLO 검출 서버 Dockerfile (Jetson JetPack 6.x 전용)
+# 대상: NVIDIA Jetson Orin (JetPack 6.x / L4T R36.x)
+# Python: 3.10
+# ============================================================
+
+# JetPack 6.x / L4T R36.x 기준
+# 참고: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/l4t-pytorch
+FROM nvcr.io/nvidia/l4t-pytorch:r36.2.0-pth2.1-py3
+
+# 환경 변수
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV TZ=Asia/Seoul
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 시간대 설정
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# 시스템 의존성
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# pip 업그레이드
+RUN pip install --upgrade pip setuptools wheel
+
+# 작업 디렉토리
+WORKDIR /app
+
+# PyTorch가 이미 설치되어 있음 (베이스 이미지에 포함)
+# 버전 확인
+RUN python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+
+# 의존성 설치 (torch 제외)
+RUN pip install --no-cache-dir \
+    ultralytics>=8.0.0 \
+    opencv-python>=4.8.0 \
+    streamlit>=1.28.0 \
+    streamlit-image-coordinates>=0.1.0 \
+    requests>=2.31.0 \
+    Pillow>=10.0.0 \
+    flask>=2.0.0 \
+    fastapi>=0.104.0 \
+    uvicorn[standard]>=0.24.0 \
+    python-multipart>=0.0.6 \
+    numpy>=1.24.0,<2.0.0
+
+# MediaPipe (aarch64 빌드 필요할 수 있음)
+RUN pip install --no-cache-dir mediapipe || \
+    echo "MediaPipe not available for aarch64"
+
+# 소스 코드 복사
+COPY backend/yolodetect /app/yolodetect
+
+# 모델 디렉토리 생성
+RUN mkdir -p /app/models /app/detection_results
+
+# 모델 파일 복사 (있으면)
+COPY backend/yolodetect/yolov8n.pt /app/models/ 2>/dev/null || true
+
+# 환경 변수
+ENV YOLO_MODEL=/app/models/yolov8n.pt
+ENV STORAGE_PATH=/app/detection_results
+ENV STREAMLIT_SERVER_PORT=8501
+ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
+
+# 포트 노출
+EXPOSE 8501 8082
+
+WORKDIR /app/yolodetect
+
+# 시작 스크립트
+COPY docker/yolo-jetson/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+CMD ["/app/start.sh"]

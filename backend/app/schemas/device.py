@@ -72,6 +72,23 @@ class DeviceUpdate(BaseModel):
         le=3600,
         description="상태 보고 주기 (초). 최소 10초, 최대 3600초(1시간)",
     )
+    # 카메라 스트림 전송 설정
+    camera_sink_url: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="영상 sink URL. 예: http://192.168.1.100:8502/upload/image",
+    )
+    camera_stream_mode: Optional[str] = Field(
+        None,
+        max_length=50,
+        description="전송 방식: mjpeg_stills, realtime_websocket, realtime_rtsp",
+    )
+    camera_frame_interval_ms: Optional[int] = Field(
+        None,
+        ge=100,
+        le=600000,
+        description="프레임 전송 주기 (ms). 최소 100ms, 최대 600000ms(10분)",
+    )
 
 
 class DeviceResponse(DeviceBase):
@@ -83,6 +100,10 @@ class DeviceResponse(DeviceBase):
     registered_at: datetime
     last_seen_at: Optional[datetime] = None
     status_report_interval: int = 60  # 기본값 60초
+    # 카메라 스트림 전송 설정
+    camera_sink_url: Optional[str] = None
+    camera_stream_mode: Optional[str] = "mjpeg_stills"
+    camera_frame_interval_ms: int = 1000  # 기본값 1000ms
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -31,11 +31,15 @@ def init_database():
             if not existing_admin:
                 logger.info("초기 관리자 계정 생성 중...")
                 
-                # 기본 관리자 계정
+                # 기본 관리자 계정 (환경변수로 오버라이드 가능)
+                import os
+                init_admin_password = os.getenv("INIT_ADMIN_PASSWORD", "Admin123!")
+                init_admin_email = os.getenv("INIT_ADMIN_EMAIL", "admin@example.com")
+                
                 admin_user = User(
                     username="admin",
-                    email="admin@example.com",
-                    password_hash=get_password_hash("Admin123!"),  # 초기 비밀번호
+                    email=init_admin_email,
+                    password_hash=get_password_hash(init_admin_password),
                     role=UserRole.ADMIN,
                     is_active=True
                 )
@@ -46,7 +50,7 @@ def init_database():
                 logger.info("=" * 60)
                 logger.info("초기 관리자 계정이 생성되었습니다:")
                 logger.info(f"  사용자명: admin")
-                logger.info(f"  비밀번호: Admin123!")
+                logger.info(f"  비밀번호: (환경변수 INIT_ADMIN_PASSWORD 또는 기본값)")
                 logger.info(f"  이메일: admin@example.com")
                 logger.info("보안을 위해 로그인 후 반드시 비밀번호를 변경하세요!")
                 logger.info("=" * 60)

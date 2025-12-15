@@ -18,7 +18,7 @@ MODEL_DIR = os.path.join(
     "models",
     os.getenv(
         "ASR_MODEL_DIR",
-        "sherpa-onnx-rk3588-30-seconds-sense-voice-zh-en-ja-ko-yue-2024-07-17"
+        "sherpa-onnx-rk3588-30-seconds-sense-voice-zh-en-ja-ko-yue-2024-07-17",
     ),
 )
 
@@ -77,31 +77,35 @@ EMERGENCY_API_CONFIG = {
             "name": "Emergency Alert API (JSON)",
             "url": os.getenv(
                 "EMERGENCY_API_URL_JSON",
-                "http://10.10.11.23:10008/api/emergency/quick"
+                "http://localhost:8080/api/emergency/quick",  # 환경변수로 오버라이드
             ),
             "enabled": True,
             "method": "POST",
-            "type": "json"
+            "type": "json",
         },
         {
             "name": "Emergency Alert API (Multipart)",
             "url": os.getenv(
                 "EMERGENCY_API_URL_MULTIPART",
-                "http://10.10.11.23:10008/api/emergency/quick/{watchId}"
+                "http://localhost:8080/api/emergency/quick/{watchId}",  # 환경변수로 오버라이드
             ),
-            "enabled": os.getenv("EMERGENCY_API_MULTIPART_ENABLED", "false").lower() == "true",
+            "enabled": os.getenv("EMERGENCY_API_MULTIPART_ENABLED", "false").lower()
+            == "true",
             "method": "POST",
-            "type": "multipart"
-        }
+            "type": "multipart",
+        },
     ],
-    "watch_id": os.getenv("EMERGENCY_WATCH_ID", "watch_1764653561585_7956"),
+    "watch_id": os.getenv("EMERGENCY_WATCH_ID", ""),  # 환경변수 필수
     "sender_id": os.getenv("EMERGENCY_SENDER_ID", "voice_asr_system"),
-    "include_image_url": os.getenv("EMERGENCY_INCLUDE_IMAGE_URL", "true").lower() == "true",
+    "include_image_url": os.getenv("EMERGENCY_INCLUDE_IMAGE_URL", "true").lower()
+    == "true",
     "image_base_url": os.getenv(
         "EMERGENCY_IMAGE_BASE_URL",
-        "http://10.10.11.79:8080/api/images"
+        "http://localhost:8080/api/images",  # 환경변수로 오버라이드
     ),
-    "fcm_project_id": os.getenv("EMERGENCY_FCM_PROJECT_ID", "emergency-alert-system-f27e6"),
+    "fcm_project_id": os.getenv(
+        "EMERGENCY_FCM_PROJECT_ID", "emergency-alert-system-f27e6"
+    ),
 }
 
 # ====================
@@ -111,30 +115,37 @@ EMERGENCY_API_CONFIG = {
 SSL_VERIFY = os.getenv("SSL_VERIFY", "false").lower() == "true"
 
 if not SSL_VERIFY:
-    logger.warning("⚠️ SSL 검증이 비활성화되어 있습니다. 프로덕션 환경에서는 활성화하세요.")
+    logger.warning(
+        "⚠️ SSL 검증이 비활성화되어 있습니다. 프로덕션 환경에서는 활성화하세요."
+    )
     # 자체 서명 인증서 사용 시 Gradio 내부 API 호출 SSL 검증 비활성화
-    os.environ['GRADIO_SSL_VERIFY'] = 'false'
-    os.environ['CURL_CA_BUNDLE'] = ''
-    os.environ['REQUESTS_CA_BUNDLE'] = ''
-    os.environ['PYTHONHTTPSVERIFY'] = '0'
-    
+    os.environ["GRADIO_SSL_VERIFY"] = "false"
+    os.environ["CURL_CA_BUNDLE"] = ""
+    os.environ["REQUESTS_CA_BUNDLE"] = ""
+    os.environ["PYTHONHTTPSVERIFY"] = "0"
+
     # httpx SSL 검증 비활성화 (자체 서명 인증서 사용 시)
     import ssl
+
     ssl._create_default_https_context = ssl._create_unverified_context
-    
+
     # httpx 클라이언트의 SSL 검증 비활성화를 위한 패치
     try:
         import httpx
+
         # httpx의 기본 SSL 검증 비활성화
         original_init = httpx.Client.__init__
+
         def patched_init(self, *args, verify=False, **kwargs):
             return original_init(self, *args, verify=False, **kwargs)
+
         httpx.Client.__init__ = patched_init
-        
+
         original_async_init = httpx.AsyncClient.__init__
+
         def patched_async_init(self, *args, verify=False, **kwargs):
             return original_async_init(self, *args, verify=False, **kwargs)
+
         httpx.AsyncClient.__init__ = patched_async_init
     except ImportError:
         pass
-

@@ -45,7 +45,9 @@ class Settings(BaseSettings):
     MQTT_USE_TLS: bool = False
 
     # ASR (음성인식 서버)
-    ASR_SERVER_URL: str = "http://10.10.11.17:8001"  # ASR WebSocket API 서버 URL
+    ASR_SERVER_URL: str = (
+        "http://localhost:8001"  # 환경변수 ASR_SERVER_URL로 오버라이드
+    )
 
     # File Upload
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB
