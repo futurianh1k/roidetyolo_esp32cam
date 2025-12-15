@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libmariadb-dev \
     pkg-config \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 작업 디렉토리
@@ -24,6 +25,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 소스 코드 복사
 COPY backend/app /app/app
 COPY backend/migrations /app/migrations
+COPY backend/init_db.py /app/init_db.py
+
+# 시작 스크립트 복사
+COPY docker/webapp/start-backend.sh /app/start-backend.sh
+RUN chmod +x /app/start-backend.sh
 
 # 환경 변수
 ENV PYTHONUNBUFFERED=1
@@ -33,8 +39,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 EXPOSE 8000
 
 # 헬스체크
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# 실행
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 실행 (시작 스크립트 사용)
+CMD ["/app/start-backend.sh"]
