@@ -2,9 +2,15 @@
 # Use: idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ota" build
 
 # OTA partition table
+# IMPORTANT:
+# Disable Single App and use Custom partition table for OTA.
+# Otherwise build can fail with "factory 1MB app partition is too small".
+# CONFIG_PARTITION_TABLE_SINGLE_APP is not set
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_custom.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions_custom.csv"
 
 # OTA features
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK=n
+CONFIG_APP_ROLLBACK_ENABLE=y

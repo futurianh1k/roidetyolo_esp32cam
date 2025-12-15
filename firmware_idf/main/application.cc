@@ -180,6 +180,9 @@ void Application::Initialize() {
     // Enable Camera and Display power
     power_manager_->EnableFeature(PowerFeature::kCamera);
     power_manager_->EnableFeature(PowerFeature::kDisplay);
+    // Enable Speaker power (AW88298 AMP) - audio playback requires this
+    // rail/enable
+    power_manager_->EnableFeature(PowerFeature::kSpeaker);
     ESP_LOGI(TAG, "Power management initialized");
   } else {
     ESP_LOGW(TAG, "Power management initialization failed, continuing...");
@@ -193,7 +196,8 @@ void Application::Initialize() {
   // ==========================================================
   ESP_LOGI(TAG, "STEP 2: Initializing Audio...");
   audio_codec_ = new AudioCodec();
-  if (audio_codec_->Initialize()) {
+  if (audio_codec_->Initialize(
+          power_manager_ ? power_manager_->GetI2CBusHandle() : nullptr)) {
     ESP_LOGI(TAG, "Audio codec initialized, creating service...");
     audio_service_ = new AudioService();
     if (audio_service_->Initialize(audio_codec_)) {

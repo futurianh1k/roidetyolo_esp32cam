@@ -99,6 +99,7 @@ bool WavPlayer::PlayFile(const std::string &path) {
   fseek(file, 0, SEEK_END);
   size_t file_size = ftell(file);
   fseek(file, 0, SEEK_SET);
+  ESP_LOGI(TAG, "Opening WAV file: %s (%zu bytes)", path.c_str(), file_size);
 
   // WAV 헤더 읽기
   WavHeader header;
@@ -116,7 +117,7 @@ bool WavPlayer::PlayFile(const std::string &path) {
   }
 
   is_playing_ = true;
-  codec_->EnableOutput(true);
+  // 출력 채널은 항상 활성화 상태로 유지 (Initialize에서 이미 활성화됨)
 
   // PCM 데이터 읽기 및 재생
   std::vector<int16_t> buffer(OUTPUT_CHUNK_SAMPLES);
@@ -145,7 +146,7 @@ bool WavPlayer::PlayFile(const std::string &path) {
   }
 
   fclose(file);
-  codec_->EnableOutput(false);
+  // 출력 채널 비활성화 제거 - 항상 활성화 상태 유지
   is_playing_ = false;
 
   ESP_LOGI(TAG, "Finished playing: %s", path.c_str());
@@ -183,7 +184,7 @@ bool WavPlayer::OutputPCM(const int16_t *pcm_data, size_t samples,
   }
 
   is_playing_ = true;
-  codec_->EnableOutput(true);
+  // 출력 채널은 항상 활성화 상태로 유지 (Initialize에서 이미 활성화됨)
 
   std::vector<int16_t> buffer(OUTPUT_CHUNK_SAMPLES);
   size_t offset = 0;
@@ -209,7 +210,7 @@ bool WavPlayer::OutputPCM(const int16_t *pcm_data, size_t samples,
     offset += chunk_samples;
   }
 
-  codec_->EnableOutput(false);
+  // 출력 채널 비활성화 제거 - 항상 활성화 상태 유지
   is_playing_ = false;
 
   return true;
@@ -237,6 +238,9 @@ bool WavPlayer::PlayAlarm(AlarmType type, int repeat) {
 
   ESP_LOGI(TAG, "Playing alarm: freq=%d, duration=%dms, repeats=%d",
            pattern.frequency, pattern.duration_ms, pattern.repeats * repeat);
+
+  // 알람 재생 시작 플래그 설정
+  is_playing_ = true;
 
   for (int r = 0; r < repeat && is_playing_; r++) {
     for (int i = 0; i < pattern.repeats && is_playing_; i++) {
@@ -291,30 +295,46 @@ bool WavPlayer::PlayBeep(int frequency, int duration_ms, int volume) {
   GenerateSineWave(buffer, frequency, OUTPUT_SAMPLE_RATE, duration_ms, volume);
 
   is_playing_ = true;
-  codec_->EnableOutput(true);
+  // 출력 채널은 항상 활성화 상태로 유지 (Initialize에서 이미 활성화됨)
+  // codec_->EnableOutput(true); 제거 - 중복 활성화 방지
 
   // 청크 단위로 출력
   size_t offset = 0;
+  size_t success_count = 0;
+  size_t fail_count = 0;
+
   while (is_playing_ && offset < buffer.size()) {
     size_t chunk = std::min(static_cast<size_t>(OUTPUT_CHUNK_SAMPLES),
                             buffer.size() - offset);
 
     std::vector<int16_t> chunk_data(buffer.begin() + offset,
                                     buffer.begin() + offset + chunk);
-    codec_->OutputData(chunk_data);
+
+    if (codec_->OutputData(chunk_data)) {
+      success_count++;
+    } else {
+      fail_count++;
+      // 연속 실패 시 중단
+      if (fail_count > 5) {
+        ESP_LOGE(TAG, "Too many write failures, stopping playback");
+        break;
+      }
+    }
 
     offset += chunk;
   }
 
-  codec_->EnableOutput(false);
+  // 출력 채널 비활성화 제거 - 항상 활성화 상태 유지
+  // codec_->EnableOutput(false);
   is_playing_ = false;
 
-  return true;
+  ESP_LOGI(TAG, "Beep playback finished: %zu/%zu chunks", success_count,
+           success_count + fail_count);
+  return fail_count == 0;
 }
 
 void WavPlayer::Stop() {
   is_playing_ = false;
-  if (codec_) {
-    codec_->EnableOutput(false);
-  }
+  // 출력 채널 비활성화 제거 - 항상 활성화 상태 유지
+  // Stop()은 현재 재생만 중단하고 채널은 유지
 }

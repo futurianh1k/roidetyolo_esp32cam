@@ -129,18 +129,12 @@ if ($Clean) {
     Write-Host "OK: Clean complete" -ForegroundColor Green
 }
 
-# Set target
+# Configure build type (MUST be set before set-target)
+# Reason: `idf.py set-target` will generate sdkconfig immediately.
+# If SDKCONFIG_DEFAULTS isn't set yet, it will generate sdkconfig with wrong defaults
+# (e.g., single-app partition table), causing build failures.
 Write-Host ""
-Write-Host "[4] Setting target: $Target" -ForegroundColor Yellow
-idf.py set-target $Target
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Failed to set target" -ForegroundColor Red
-    exit 1
-}
-
-# Configure build type
-Write-Host ""
-Write-Host "[5] Configuring build type..." -ForegroundColor Yellow
+Write-Host "[4] Configuring build type..." -ForegroundColor Yellow
 if ($BuildType -eq "ota") {
     Write-Host "    - Using: sdkconfig.defaults + sdkconfig.ota" -ForegroundColor Cyan
     $env:SDKCONFIG_DEFAULTS = "sdkconfig.defaults;sdkconfig.ota"
@@ -148,6 +142,15 @@ if ($BuildType -eq "ota") {
 else {
     Write-Host "    - Using: sdkconfig.defaults + sdkconfig.singleapp" -ForegroundColor Cyan
     $env:SDKCONFIG_DEFAULTS = "sdkconfig.defaults;sdkconfig.singleapp"
+}
+
+# Set target (after SDKCONFIG_DEFAULTS is set)
+Write-Host ""
+Write-Host "[5] Setting target: $Target" -ForegroundColor Yellow
+idf.py set-target $Target
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Failed to set target" -ForegroundColor Red
+    exit 1
 }
 
 # Build

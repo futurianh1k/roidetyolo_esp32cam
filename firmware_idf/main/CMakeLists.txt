@@ -58,6 +58,7 @@ idf_component_register(
     INCLUDE_DIRS ${INCLUDE_DIRS}
     REQUIRES 
         driver
+        esp_codec_dev
         esp_wifi
         esp_http_client
         esp_http_server

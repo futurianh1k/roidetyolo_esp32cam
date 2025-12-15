@@ -23,6 +23,16 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 2.1.4
+  espressif/esp_codec_dev:
+    component_hash: 0d9e9bc288156eb55f79338d312e1ebf8c9dfbd5e7d13ef0f20ccb031b4e15cf
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.5.4
   espressif/esp_jpeg:
     component_hash: defb83669293cbf86d0fa86b475ba5517aceed04ed70db435388c151ab37b5d7
     dependencies:
@@ -63,9 +73,10 @@ dependencies:
     version: 5.5.1
 direct_dependencies:
 - espressif/esp32-camera
+- espressif/esp_codec_dev
 - espressif/esp_lcd_ili9341
 - espressif/esp_websocket_client
 - idf
-manifest_hash: c82696d57ad6fc1ef93cb5df609191e2f54b7476cf17d1dd993393e0ae0b1c38
+manifest_hash: c3387d2963ba4eddd70d38a39285d2ae2c9bb6e1d57d2bbb1dd1a4c53a106076
 target: esp32s3
 version: 2.0.0
