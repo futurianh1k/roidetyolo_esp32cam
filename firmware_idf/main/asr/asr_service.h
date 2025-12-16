@@ -7,6 +7,8 @@
 #include <memory>
 #include <string>
 
+class DisplayService;
+
 /**
  * ASRService - 음성인식 서비스
  *
@@ -56,12 +58,15 @@ public:
    */
   void SetRecognitionCallback(RecognitionCallback callback);
 
+  void SetDisplayService(DisplayService *display_service);
+
 private:
   AudioService *audio_service_ = nullptr;
   WebSocketClient *ws_client_ = nullptr;
   bool session_active_ = false;
   std::string session_id_;
   std::string ws_url_;
+  DisplayService *display_service_ = nullptr;
 
   RecognitionCallback recognition_callback_;
 

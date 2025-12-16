@@ -319,49 +319,30 @@ void AudioCodec::EnableOutput(bool enable) {
 }
 
 bool AudioCodec::OutputData(const std::vector<int16_t> &data) {
-  if (!speaker_dev_) {
-    ESP_LOGE(TAG, "Speaker device not initialized (AW88298 not ready)");
+  if (!tx_handle_) {
+    ESP_LOGE(TAG, "TX channel not initialized");
     return false;
   }
 
   const uint8_t *buf = reinterpret_cast<const uint8_t *>(data.data());
-  const int total_bytes = static_cast<int>(data.size() * sizeof(int16_t));
+  const size_t total_bytes = data.size() * sizeof(int16_t);
+  const size_t kChunkBytes = 512 * sizeof(int16_t);
 
-  int offset = 0;
-  int zero_progress_retries = 0;
+  size_t offset = 0;
 
-  // esp_codec_dev_write()는 부분 전송(partial write)이 발생할 수 있으므로
-  // 전체 바이트를 모두 쓸 때까지 루프를 돌며 전송한다.
   while (offset < total_bytes) {
-    const int remaining = total_bytes - offset;
-    int written =
-        esp_codec_dev_write(speaker_dev_, (void *)(buf + offset), remaining);
+    const size_t remaining = total_bytes - offset;
+    const size_t chunk = remaining > kChunkBytes ? kChunkBytes : remaining;
+    size_t written = 0;
+    esp_err_t ret =
+        i2s_channel_write(tx_handle_, buf + offset, chunk, &written, portMAX_DELAY);
 
-    if (written < 0) {
-      ESP_LOGE(TAG, "esp_codec_dev_write failed: %d (offset=%d/%d)", written,
-               offset, total_bytes);
+    if (ret != ESP_OK || written == 0) {
+      ESP_LOGE(TAG, "i2s_channel_write failed: %s", esp_err_to_name(ret));
       return false;
     }
 
-    if (written == 0) {
-      // 일시적으로 DMA/코덱 쪽이 막혀 0이 반환될 수 있음
-      zero_progress_retries++;
-      if (zero_progress_retries >= 10) {
-        ESP_LOGE(TAG, "esp_codec_dev_write made no progress (offset=%d/%d)",
-                 offset, total_bytes);
-        return false;
-      }
-      vTaskDelay(pdMS_TO_TICKS(10));
-      continue;
-    }
-
-    zero_progress_retries = 0;
     offset += written;
-
-    // 긴 전송에서 watchdog/스케줄링에 유리하게 약간 양보
-    if (remaining > 4096) {
-      taskYIELD();
-    }
   }
 
   return true;

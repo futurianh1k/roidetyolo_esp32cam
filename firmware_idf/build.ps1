@@ -145,12 +145,34 @@ else {
 }
 
 # Set target (after SDKCONFIG_DEFAULTS is set)
+# NOTE: `idf.py set-target` triggers a fullclean which can fail on Windows
+# if any file under build/ is locked by another process (e.g., monitor/build logs).
+# To avoid unnecessary fullclean, only call set-target when required.
 Write-Host ""
 Write-Host "[5] Setting target: $Target" -ForegroundColor Yellow
-idf.py set-target $Target
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Failed to set target" -ForegroundColor Red
-    exit 1
+
+$needSetTarget = $true
+if (Test-Path $sdkconfigFile) {
+    $sdk = Get-Content $sdkconfigFile -ErrorAction SilentlyContinue
+    if ($sdk -match "CONFIG_IDF_TARGET=`"$Target`"") {
+        $needSetTarget = $false
+    }
+}
+if (-not (Test-Path $buildDir)) {
+    $needSetTarget = $true
+}
+
+if ($needSetTarget) {
+    Write-Host "    - Running: idf.py set-target $Target" -ForegroundColor Cyan
+    idf.py set-target $Target
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to set target" -ForegroundColor Red
+        Write-Host "TIP: If this is a Windows file-lock issue, stop monitor and try again." -ForegroundColor Yellow
+        exit 1
+    }
+}
+else {
+    Write-Host "    - Skipping set-target (already configured)" -ForegroundColor Green
 }
 
 # Build

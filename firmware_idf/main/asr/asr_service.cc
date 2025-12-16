@@ -1,5 +1,6 @@
 #include "asr_service.h"
 #include "../audio/audio_service.h"
+#include "../display/display_service.h"
 #include "../config.h"
 #include "../network/websocket_client.h"
 #include <cJSON.h>
@@ -159,6 +160,9 @@ bool ASRService::StartSession(const std::string &language,
   if (audio_service_) {
     audio_service_->StartMicrophone();
   }
+  if (display_service_) {
+    display_service_->ShowListening(true);
+  }
 
   session_active_ = true;
   ESP_LOGI(TAG, "ASR session started");
@@ -173,6 +177,9 @@ void ASRService::StopSession() {
   // 마이크 중지
   if (audio_service_) {
     audio_service_->StopMicrophone();
+  }
+  if (display_service_) {
+    display_service_->ShowListening(false);
   }
 
   // 오디오 스트림 태스크 종료
@@ -196,6 +203,10 @@ void ASRService::StopSession() {
 
 void ASRService::SetRecognitionCallback(RecognitionCallback callback) {
   recognition_callback_ = callback;
+}
+
+void ASRService::SetDisplayService(DisplayService *display_service) {
+  display_service_ = display_service;
 }
 
 void ASRService::OnRecognitionResult(const std::string &text, bool is_final,

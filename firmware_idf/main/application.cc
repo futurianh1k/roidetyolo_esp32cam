@@ -253,10 +253,25 @@ void Application::Initialize() {
     ESP_LOGI(TAG, "Display service initialized");
   }
 
+  if (camera_service_ && display_service_) {
+    camera_service_->SetPreviewCallbacks(
+        [](const uint8_t *buf, int width, int height) {
+          if (display_service_) {
+            display_service_->ShowCameraFrameRGB565(buf, width, height);
+          }
+        },
+        []() {
+          if (display_service_) {
+            display_service_->DisableCameraPreview();
+          }
+        });
+  }
+
   // Initialize ASR Service
   if (audio_service_) {
     asr_service_ = new ASRService();
     if (asr_service_->Initialize(audio_service_)) {
+      asr_service_->SetDisplayService(display_service_);
       // 인식 결과 콜백 설정
       asr_service_->SetRecognitionCallback(
           [this](const std::string &text, bool is_final, bool is_emergency) {
@@ -352,9 +367,6 @@ void Application::Initialize() {
           }
 
           if (asr_service_->StartSession(language)) {
-            if (display_service_) {
-              display_service_->ShowListening(true);
-            }
             if (status_reporter_) {
               status_reporter_->SetMicStatus("active");
             }
@@ -362,9 +374,6 @@ void Application::Initialize() {
           }
         } else if (command == "stop_asr" && asr_service_) {
           asr_service_->StopSession();
-          if (display_service_) {
-            display_service_->ShowListening(false);
-          }
           if (status_reporter_) {
             status_reporter_->SetMicStatus("stopped");
           }
@@ -417,17 +426,23 @@ void Application::Initialize() {
             status_reporter_->SetCameraStatus("active");
           }
         } else if (action == "stop") {
+          ESP_LOGI(TAG, "Camera stop command received (MQTT)");
           camera_service_->Stop();
           if (status_reporter_) {
             status_reporter_->SetCameraStatus("stopped");
           }
-          ESP_LOGI(TAG, "Camera stopped");
+          if (display_service_) {
+            display_service_->ShowStatus("Camera stopped", "red");
+          }
         } else if (action == "pause") {
-          camera_service_->Stop(); // 일시정지는 정지와 동일하게 처리
+          ESP_LOGI(TAG, "Camera pause command received (MQTT)");
+          camera_service_->PauseStream();
           if (status_reporter_) {
             status_reporter_->SetCameraStatus("paused");
           }
-          ESP_LOGI(TAG, "Camera paused");
+          if (display_service_) {
+            display_service_->ShowStatus("Camera paused", "yellow");
+          }
         }
       }
     }

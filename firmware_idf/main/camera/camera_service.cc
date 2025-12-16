@@ -2,6 +2,7 @@
 #include "../config.h"
 #include "../pins.h"
 #include <cstring>
+#include <utility>
 #include <esp_camera.h>
 #include <esp_http_client.h>
 #include <esp_log.h>
@@ -150,6 +151,7 @@ void CameraService::StartStream(const std::string &sink_url,
   stream_mode_ = stream_mode;
   frame_interval_ms_ = frame_interval_ms;
   streaming_active_ = true;
+  preview_enabled_ = true;
 
   // 서비스가 실행 중이 아니면 시작
   if (!service_running_) {
@@ -162,7 +164,20 @@ void CameraService::StartStream(const std::string &sink_url,
 
 void CameraService::StopStream() {
   streaming_active_ = false;
+  preview_enabled_ = false;
+  if (preview_stop_callback_) {
+    preview_stop_callback_();
+  }
   ESP_LOGI(TAG, "Camera stream stopped");
+}
+
+void CameraService::PauseStream() {
+  streaming_active_ = false;
+  preview_enabled_ = false;
+  if (preview_stop_callback_) {
+    preview_stop_callback_();
+  }
+  ESP_LOGI(TAG, "Camera stream paused");
 }
 
 bool CameraService::CaptureFrame(std::vector<uint8_t> &jpeg_data) {
@@ -172,13 +187,16 @@ bool CameraService::CaptureFrame(std::vector<uint8_t> &jpeg_data) {
 
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    ESP_LOGE(TAG, "Failed to capture frame");
+    HandleCaptureFailure("fb_get");
     return false;
   }
 
   // GC0308 카메라는 RGB565로 캡처하므로 JPEG로 변환 필요
   // Reference: esp32-camera의 img_converters.h
   if (fb->format == PIXFORMAT_RGB565) {
+    if (preview_enabled_ && preview_callback_) {
+      preview_callback_(fb->buf, fb->width, fb->height);
+    }
     uint8_t *jpeg_out = nullptr;
     size_t jpeg_len = 0;
 
@@ -187,7 +205,7 @@ bool CameraService::CaptureFrame(std::vector<uint8_t> &jpeg_data) {
     esp_camera_fb_return(fb);
 
     if (!converted || jpeg_out == nullptr) {
-      ESP_LOGE(TAG, "JPEG conversion failed");
+      HandleCaptureFailure("frame2jpg");
       return false;
     }
 
@@ -199,6 +217,7 @@ bool CameraService::CaptureFrame(std::vector<uint8_t> &jpeg_data) {
     esp_camera_fb_return(fb);
   }
 
+  capture_failures_ = 0;
   return true;
 }
 
@@ -298,4 +317,26 @@ bool CameraService::SendFrameHTTP(const std::vector<uint8_t> &jpeg_data) {
 
   ESP_LOGI(TAG, "Frame sent successfully (%d bytes)", jpeg_data.size());
   return true;
+}
+
+void CameraService::HandleCaptureFailure(const char *context) {
+  capture_failures_++;
+  ESP_LOGW(TAG, "Capture failure (%s). consecutive=%d", context,
+           capture_failures_);
+  if (capture_failures_ >= 5) {
+    ESP_LOGI(TAG, "Reinitializing camera after repeated failures");
+    esp_camera_deinit();
+    initialized_ = false;
+    capture_failures_ = 0;
+    if (!Initialize()) {
+      ESP_LOGE(TAG, "Camera re-initialization failed");
+    }
+  }
+}
+
+void CameraService::SetPreviewCallbacks(
+    std::function<void(const uint8_t *, int, int)> on_frame,
+    std::function<void()> on_stop) {
+  preview_callback_ = std::move(on_frame);
+  preview_stop_callback_ = std::move(on_stop);
 }

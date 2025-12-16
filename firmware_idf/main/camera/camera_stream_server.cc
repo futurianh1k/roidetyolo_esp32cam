@@ -242,11 +242,12 @@ esp_err_t CameraStreamServer::StreamHandler(httpd_req_t *req) {
   // 클라이언트 수 증가
   if (server->client_mutex_) {
     xSemaphoreTake(server->client_mutex_, portMAX_DELAY);
-    server->active_clients_++;
+    server->active_clients_.fetch_add(1, std::memory_order_relaxed);
     xSemaphoreGive(server->client_mutex_);
   }
 
-  ESP_LOGI(TAG, "Stream client connected (total: %d)", server->active_clients_);
+  ESP_LOGI(TAG, "Stream client connected (total: %d)",
+           server->active_clients_.load(std::memory_order_relaxed));
 
   char part_buf[128];
   int64_t last_frame_time = 0;
@@ -308,12 +309,12 @@ esp_err_t CameraStreamServer::StreamHandler(httpd_req_t *req) {
   // 클라이언트 수 감소
   if (server->client_mutex_) {
     xSemaphoreTake(server->client_mutex_, portMAX_DELAY);
-    server->active_clients_--;
+    server->active_clients_.fetch_sub(1, std::memory_order_relaxed);
     xSemaphoreGive(server->client_mutex_);
   }
 
   ESP_LOGI(TAG, "Stream client disconnected (remaining: %d)",
-           server->active_clients_);
+           server->active_clients_.load(std::memory_order_relaxed));
 
   return ESP_OK;
 }
@@ -389,7 +390,8 @@ esp_err_t CameraStreamServer::StatusHandler(httpd_req_t *req) {
   snprintf(json, sizeof(json),
            "{\"clients\":%d,\"frames_sent\":%lu,\"bytes_sent\":%lu,"
            "\"http_running\":%s,\"ws_enabled\":%s}",
-           server->active_clients_, (unsigned long)server->frames_sent_,
+           server->active_clients_.load(std::memory_order_relaxed),
+           (unsigned long)server->frames_sent_,
            (unsigned long)server->bytes_sent_,
            server->IsHTTPRunning() ? "true" : "false",
            server->ws_stream_enabled_ ? "true" : "false");

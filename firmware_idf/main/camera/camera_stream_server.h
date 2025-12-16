@@ -15,6 +15,7 @@
 #define CAMERA_STREAM_SERVER_H
 
 #include "camera_service.h"
+#include <atomic>
 #include <esp_http_server.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -22,6 +23,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+
 
 // 스트리밍 설정
 #define STREAM_HTTP_PORT 81
@@ -63,7 +65,7 @@ public:
   void EnableWebSocketStream(bool enable);
 
   // 현재 연결된 클라이언트 수
-  int GetClientCount() const { return active_clients_; }
+  int GetClientCount() const { return active_clients_.load(); }
 
   // 스트리밍 통계
   uint32_t GetFramesSent() const { return frames_sent_; }
@@ -78,7 +80,7 @@ private:
   bool stream_task_running_ = false;
 
   // 클라이언트 관리
-  volatile int active_clients_ = 0;
+  std::atomic<int> active_clients_{0};
   SemaphoreHandle_t client_mutex_ = nullptr;
 
   // WebSocket
